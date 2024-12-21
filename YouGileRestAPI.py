@@ -69,6 +69,69 @@ class YouGileRestAPI:
         return response.json()
 
 
+    def get_users(self, token):
+        """
+        Сотрудники. Получить список сотрудников
+        """
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+
+        response = requests.request("GET", f"{self.url}/users", headers=headers)
+        self.projects = response.json().get("content", [])     # [{'title': , 'timestamp': , 'users': {}, 'id': }, ...]
+        return self.projects
+
+    def create_user(self, token, email, isAdmin=False):
+        """
+        Сотрудники. Пригласить в компанию
+        """
+        payload = {
+            "email": email,
+            "isAdmin": isAdmin
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+
+        response = requests.request("POST", f"{self.url}/users", json=payload, headers=headers)
+        return response.json()
+
+    def get_user(self, token, userId):
+        """
+        Сотрудники. Получить сотрудника по ID
+        """
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+
+        response = requests.request("GET", f"{self.url}/users/{userId}", headers=headers)
+        return response.json()
+
+    def change_user(self, token, userId, isAdmin=False):
+        """
+        Сотрудники. Изменить сотрудника по ID
+        """
+        payload = {"isAdmin": isAdmin}
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+
+        response = requests.request("PUT", f"{self.url}/users/{userId}", json=payload, headers=headers)
+        return response.json()
+
+    def delete_user(self, token, userId):
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+
+        response = requests.request("DELETE", f"{self.url}/users/{userId}", headers=headers)
+
+
     def get_projects(self, token):
         """
         Проекты. Получить список проектов
