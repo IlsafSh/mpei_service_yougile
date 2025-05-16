@@ -22,7 +22,7 @@ class YouGileRestAPI:
     *   Все *get_* методы кешируют результат в одноимённые self.*
         (если нужно «живое» состояние — просто вызывайте их повторно).
     *   Любую ошибку API (статус ≠ 200) метод _request() поднимает как
-        исключение → удобно оборачивать вызовы try/except в бизнес-коде.
+        исключение → удобно оборачивать вызовы try/except в основном коде.
     """
 
     # --------------------------------------------------------------------- #
@@ -295,6 +295,11 @@ class YouGileRestAPI:
 
     def get_tasks(self, token: str) -> List[Dict[str, Any]]:
         """Задачи → получить список всех задач компании."""
+        self.tasks = self._request("GET", "/task-list", token=token)
+        return self.tasks
+
+    def get_tasks_reverse(self, token: str) -> List[Dict[str, Any]]:
+        """Задачи → получить список всех задач компании в обратном порядке."""
         self.tasks = self._request("GET", "/tasks", token=token)
         return self.tasks
 
