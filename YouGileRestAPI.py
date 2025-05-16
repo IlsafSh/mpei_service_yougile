@@ -1,375 +1,321 @@
+"""
+------------------------------------------------------------
+Обёртка над REST API YouGile v2.0
+------------------------------------------------------------
+Документация API: https://ru.yougile.com/api-v2#/
+------------------------------------------------------------
+"""
+
+from typing import Any, Dict, List, Optional
 import requests
 
+
 class YouGileRestAPI:
-    def __init__(self):
-        """
-        Инициализация
-        """
-        self.url = "https://ru.yougile.com/api-v2"
-        self.companies = []
-        self.keys = []
-        self.projects = []
-        self.boards = []
-        self.columns = []
-        self.tasks = []
-        self.chat_subscribers = []
+    """
+    Класс-обёртка над REST v2 YouGile.
 
+    ───────────────────────────────────────────────────────
+    * Памятка по порядку работы:
+        1.  Получаем список компаний    →  get_companies()
+        2.  Создаём / берём API-ключ    →  create_key() / get_keys()
+        3.  Передаём ключ в остальные методы как `token`.
+    *   Все *get_* методы кешируют результат в одноимённые self.*
+        (если нужно «живое» состояние — просто вызывайте их повторно).
+    *   Любую ошибку API (статус ≠ 200) метод _request() поднимает как
+        исключение → удобно оборачивать вызовы try/except в бизнес-коде.
+    """
 
-    def get_companies(self, login, password, name=""):
+    # --------------------------------------------------------------------- #
+    #                          ️  ОСНОВЫ / НАСТРОЙКА                       #
+    # --------------------------------------------------------------------- #
+
+    def __init__(self, base_url: str = "https://ru.yougile.com/api-v2") -> None:
         """
-        Авторизация. Получить список компаний
+        Инициализация клиента.
+        :param base_url: базовый URL API (может пригодиться на тестовом стенде)
         """
-        payload = {
-            "login": login,
-            "password": password,
-            "name": name
-        }
+        self.url = base_url.rstrip("/")
+
+        # «кеш» для списковых запросов – для повторного использования
+        self.companies: List[Dict[str, Any]] = []
+        self.keys: List[Dict[str, Any]] = []
+        self.users: List[Dict[str, Any]] = []
+        self.projects: List[Dict[str, Any]] = []
+        self.boards: List[Dict[str, Any]] = []
+        self.columns: List[Dict[str, Any]] = []
+        self.tasks: List[Dict[str, Any]] = []
+        self.chat_subscribers: List[int] = []
+
+    # ------------------------- ВНУТРЕННЯЯ КУХНЯ --------------------------- #
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        token: Optional[str] = None,
+        params: Dict[str, Any] | None = None,
+        json: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        """
+        Универсальный запрос к API.
+        Добавляет заголовок Content-Type, Bearer-токен (если указан),
+        бросает исключение, если код ответа ≠ 200.
+        Возвращает «content», если YouGile заворачивает данные в обёртку.
+        """
         headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
-        response = requests.request("POST", f"{self.url}/auth/companies", json=payload, headers=headers)
-        self.companies = response.json().get("content", [])     # [{'id': , 'name': , 'isAdmin': }]
+        resp = requests.request(
+            method,
+            f"{self.url}{path}",
+            headers=headers,
+            params=params,
+            json=json,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        # Если прилетел dict c ключом 'content' – возвращаем его,
+        # иначе отдаём «как есть» (это может быть list или dict без content).
+        if isinstance(data, dict) and "content" in data:
+            return data["content"]
+        return data
+
+    # ===================================================================== #
+    #                               1.  AUTH                                #
+    # ===================================================================== #
+
+    def get_companies(self, login: str, password: str, name: str = "") -> List[Dict[str, Any]]:
+        """
+        Авторизация → получить список компаний, к которым доступен пользователь.
+        """
+        self.companies = self._request(
+            "POST",
+            "/auth/companies",
+            json={"login": login, "password": password, "name": name},
+        )
         return self.companies
 
-    def get_keys(self, login, password, companyId):
+    def get_keys(self, login: str, password: str, companyId: int) -> List[Dict[str, Any]]:
         """
-        Авторизация. Получить список ключей авторизации
+        Авторизация → получить все сохранённые API-ключи для конкретной компании.
         """
-        payload = {
-            "login": login,
-            "password": password,
-            "companyId": companyId
-        }
-        headers = {"Content-Type": "application/json"}
-
-        response = requests.request("POST", f"{self.url}/auth/keys/get", json=payload, headers=headers)
-        self.keys = response.json()      # [{'key': , 'timestamp': , 'companyId': }]
+        self.keys = self._request(
+            "POST",
+            "/auth/keys/get",
+            json={"login": login, "password": password, "companyId": companyId},
+        )
         return self.keys
 
-    def create_key(self, login, password, companyId):
+    def create_key(self, login: str, password: str, companyId: int) -> Dict[str, Any]:
         """
-        Авторизация. Создать ключ авторизации
+        Авторизация → создать новый API-ключ (Bearer token).
         """
-        payload = {
-            "login": login,
-            "password": password,
-            "companyId": companyId
-        }
-        headers = {"Content-Type": "application/json"}
+        return self._request(
+            "POST",
+            "/auth/keys",
+            json={"login": login, "password": password, "companyId": companyId},
+        )
 
-        response = requests.request("POST", f"{self.url}/auth/keys", json=payload, headers=headers)
-        return response.json()
-
-    def delete_key(self, key=""):
+    def delete_key(self, key: str) -> Dict[str, Any]:
         """
-        Авторизация. Удалить ключ авторизации
+        Авторизация → удалить (отозвать) ключ по его значению.
         """
-        headers = {"Content-Type": "application/json"}
+        return self._request("DELETE", f"/auth/keys/{key}")
 
-        response = requests.request("DELETE", f"{self.url}/auth/keys/{key}", headers=headers)
-        return response.json()
+    # ===================================================================== #
+    #                               2.  USERS                               #
+    # ===================================================================== #
 
-
-    def get_users(self, token):
+    def get_users(self, token: str) -> List[Dict[str, Any]]:
         """
-        Сотрудники. Получить список сотрудников
+        Сотрудники → получить всех юзеров компании.
         """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+        self.users = self._request("GET", "/users", token=token)
+        return self.users
 
-        response = requests.request("GET", f"{self.url}/users", headers=headers)
-        self.projects = response.json().get("content", [])     # [{'title': , 'timestamp': , 'users': {}, 'id': }, ...]
+    def create_user(self, token: str, email: str, isAdmin: bool = False) -> Dict[str, Any]:
+        """
+        Сотрудники → пригласить нового пользователя по e-mail.
+        """
+        return self._request("POST", "/users", token=token, json={"email": email, "isAdmin": isAdmin})
+
+    def get_user(self, token: str, userId: int) -> Dict[str, Any]:
+        """Сотрудники → получить данные конкретного сотрудника по ID."""
+        return self._request("GET", f"/users/{userId}", token=token)
+
+    def change_user(self, token: str, userId: int, isAdmin: bool = False) -> Dict[str, Any]:
+        """Сотрудники → изменить флаг администратора у пользователя."""
+        return self._request("PUT", f"/users/{userId}", token=token, json={"isAdmin": isAdmin})
+
+    def delete_user(self, token: str, userId: int) -> None:
+        """Сотрудники → удалить сотрудника (безвозвратно)."""
+        self._request("DELETE", f"/users/{userId}", token=token)
+
+    # ===================================================================== #
+    #                              3.  PROJECTS                             #
+    # ===================================================================== #
+
+    def get_projects(self, token: str) -> List[Dict[str, Any]]:
+        """Проекты → получить список проектов компании."""
+        self.projects = self._request("GET", "/projects", token=token)
         return self.projects
 
-    def create_user(self, token, email, isAdmin=False):
+    def create_project(self, token: str, title: str, users: List[int]) -> Dict[str, Any]:
+        """Проекты → создать новый проект с указанными участниками."""
+        return self._request("POST", "/projects", token=token, json={"title": title, "users": users})
+
+    def get_project(self, token: str, projectId: int) -> Dict[str, Any]:
+        """Проекты → получить один проект по его ID."""
+        return self._request("GET", f"/projects/{projectId}", token=token)
+
+    def change_project(
+        self,
+        token: str,
+        projectId: int,
+        title: Optional[str] = None,
+        users: Optional[List[int]] = None,
+        delete: bool = False,
+    ) -> Dict[str, Any]:
         """
-        Сотрудники. Пригласить в компанию
+        Проекты → переименовать, изменить состав участников или пометить на удаление.
         """
-        payload = {
-            "email": email,
-            "isAdmin": isAdmin
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+        payload: Dict[str, Any] = {"deleted": delete}
+        if title is not None:
+            payload["title"] = title
+        if users is not None:
+            payload["users"] = users
+        return self._request("PUT", f"/projects/{projectId}", token=token, json=payload)
 
-        response = requests.request("POST", f"{self.url}/users", json=payload, headers=headers)
-        return response.json()
+    def delete_project(self, token: str, projectId: int) -> None:
+        """Проекты → физически удалить проект."""
+        self._request("DELETE", f"/projects/{projectId}", token=token)
 
-    def get_user(self, token, userId):
-        """
-        Сотрудники. Получить сотрудника по ID
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+    # ===================================================================== #
+    #                               4.  BOARDS                              #
+    # ===================================================================== #
 
-        response = requests.request("GET", f"{self.url}/users/{userId}", headers=headers)
-        return response.json()
-
-    def change_user(self, token, userId, isAdmin=False):
-        """
-        Сотрудники. Изменить сотрудника по ID
-        """
-        payload = {"isAdmin": isAdmin}
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("PUT", f"{self.url}/users/{userId}", json=payload, headers=headers)
-        return response.json()
-
-    def delete_user(self, token, userId):
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("DELETE", f"{self.url}/users/{userId}", headers=headers)
-
-
-    def get_projects(self, token):
-        """
-        Проекты. Получить список проектов
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("GET", f"{self.url}/projects", headers=headers)
-        self.projects = response.json().get("content", [])     # [{'title': , 'timestamp': , 'users': {}, 'id': }, ...]
-        return self.projects
-
-    def create_project(self, token, title, users):
-        """
-        Проекты. Создать проект
-        """
-        payload = {
-            "title": title,
-            "users": users
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("POST", f"{self.url}/projects", json=payload, headers=headers)
-        return response.json()
-
-    def get_project(self, token, projectId):
-        """
-        Проекты. Получить проект по ID
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("GET", f"{self.url}/projects/{projectId}", headers=headers)
-        return response.json()
-
-    def change_project(self, token, projectId, title, users, delete=False):
-        """
-        Проекты. Изменить проект по ID
-        """
-        payload = {
-            "deleted": delete,
-            "title": title,
-            "users": users
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("PUT", f"{self.url}/projects/{projectId}", json=payload, headers=headers)
-        return response.json()
-
-
-    def get_boards(self, token):
-        """
-        Доски. Получить список досок
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("GET", f"{self.url}/boards", headers=headers)
-        self.boards = response.json().get("content", [])     # [{'title': , 'projectId': , 'stickers': {'deadline': ,
-        # 'stopwatch': , 'assignee': , 'custom': {}}, 'id': }, ...]
+    def get_boards(self, token: str) -> List[Dict[str, Any]]:
+        """Доски → получить список всех досок во всех проектах."""
+        self.boards = self._request("GET", "/boards", token=token)
         return self.boards
 
-    def create_board(self, token, title, projectId, stickers):
-        """
-        Доски. Создать доску
-        """
-        payload = {
-            "title": title,
-            "projectId": projectId,
-            "stickers": stickers
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+    def create_board(
+        self,
+        token: str,
+        title: str,
+        projectId: int,
+        stickers: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        """Доски → создать новую доску внутри проекта."""
+        return self._request(
+            "POST",
+            "/boards",
+            token=token,
+            json={"title": title, "projectId": projectId, "stickers": stickers or {}},
+        )
 
-        response = requests.request("POST", f"{self.url}/boards", json=payload, headers=headers)
-        return response.json()
+    def get_board(self, token: str, boardId: int) -> Dict[str, Any]:
+        """Доски → получить одну доску по ID."""
+        return self._request("GET", f"/boards/{boardId}", token=token)
 
-    def get_board(self, token, boardId):
-        """
-        Доски. Получить доску по ID
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+    def change_board(
+        self,
+        token: str,
+        boardId: int,
+        title: Optional[str] = None,
+        projectId: Optional[int] = None,
+        stickers: Optional[Dict[str, Any]] = None,
+        delete: bool = False,
+    ) -> Dict[str, Any]:
+        """Доски → изменить название, принадлежность или удалить доску."""
+        payload: Dict[str, Any] = {"deleted": delete}
+        if title is not None:
+            payload["title"] = title
+        if projectId is not None:
+            payload["projectId"] = projectId
+        if stickers is not None:
+            payload["stickers"] = stickers
+        return self._request("PUT", f"/boards/{boardId}", token=token, json=payload)
 
-        response = requests.request("GET", f"{self.url}/boards/{boardId}", headers=headers)
-        return response.json()
+    def delete_board(self, token: str, boardId: int) -> None:
+        """Доски → физически удалить доску."""
+        self._request("DELETE", f"/boards/{boardId}", token=token)
 
-    def change_board(self, token, boardId, title, projectId, stickers, delete=False):
-        """
-        Доски. Изменить доску по ID
-        """
-        payload = {
-            "deleted": delete,
-            "title": title,
-            "projectId": projectId,
-            "stickers": stickers
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+    # ===================================================================== #
+    #                              5.  COLUMNS                              #
+    # ===================================================================== #
 
-        response = requests.request("PUT", f"{self.url}/boards/{boardId}", json=payload, headers=headers)
-        return response.json()
-
-
-    def get_columns(self, token):
-        """
-        Колонки. Получить список колонок
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("GET", f"{self.url}/columns", headers=headers)
-        self.columns = response.json().get("content", [])     # [{'title': , 'color': , 'boardId': , 'id': }, ...]
+    def get_columns(self, token: str) -> List[Dict[str, Any]]:
+        """Колонки → получить все колонки всех досок."""
+        self.columns = self._request("GET", "/columns", token=token)
         return self.columns
 
-    def create_column(self, token, title, color, boardId):
-        """
-        Колонки. Создать колонку
-        """
-        payload = {
-            "title": title,
-            "color": color,
-            "boardId": boardId
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+    def create_column(self, token: str, title: str, color: str, boardId: int) -> Dict[str, Any]:
+        """Колонки → создать новую колонку на доске."""
+        return self._request(
+            "POST",
+            "/columns",
+            token=token,
+            json={"title": title, "color": color, "boardId": boardId},
+        )
 
-        response = requests.request("POST", f"{self.url}/columns", json=payload, headers=headers)
-        return response.json()
+    def get_column(self, token: str, columnId: int) -> Dict[str, Any]:
+        """Колонки → получить одну колонку по ID."""
+        return self._request("GET", f"/columns/{columnId}", token=token)
 
-    def get_column(self, token, columnId):
-        """
-        Колонки. Получить колонку по ID
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+    def change_column(
+        self,
+        token: str,
+        columnId: int,
+        title: Optional[str] = None,
+        color: Optional[str] = None,
+        boardId: Optional[int] = None,
+        delete: bool = False,
+    ) -> Dict[str, Any]:
+        """Колонки → переименовать, сменить цвет или удалить колонку."""
+        payload: Dict[str, Any] = {"deleted": delete}
+        if title is not None:
+            payload["title"] = title
+        if color is not None:
+            payload["color"] = color
+        if boardId is not None:
+            payload["boardId"] = boardId
+        return self._request("PUT", f"/columns/{columnId}", token=token, json=payload)
 
-        response = requests.request("GET", f"{self.url}/columns/{columnId}", headers=headers)
-        return response.json()
+    def delete_column(self, token: str, columnId: int) -> None:
+        """Колонки → фізически удалить колонку."""
+        self._request("DELETE", f"/columns/{columnId}", token=token)
 
-    def change_column(self, token, columnId, title, color, boardId, delete=False):
-        """
-        Колонки. Изменить колонку по ID
-        """
-        payload = {
-            "deleted": delete,
-            "title": title,
-            "color": color,
-            "boardId": boardId
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+    # ===================================================================== #
+    #                               6.  TASKS                               #
+    # ===================================================================== #
 
-        response = requests.request("PUT", f"{self.url}/columns/{columnId}", json=payload, headers=headers)
-        return response.json()
-
-
-    def get_tasks(self, token):
-        """
-        Задачи. Получить список задач
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("GET", f"{self.url}/tasks", headers=headers)
-        self.tasks = response.json().get("content", [])     # [{'title': , 'timestamp': , 'columnId': , 'archived': ,
-        # 'completed': , 'completedTimestamp': . 'subtasks': [], 'assigned': , 'createdBy': , 'id': }, ...]
+    def get_tasks(self, token: str) -> List[Dict[str, Any]]:
+        """Задачи → получить список всех задач компании."""
+        self.tasks = self._request("GET", "/tasks", token=token)
         return self.tasks
 
-    def create_task(self, token, title, columnId, subtasks, assigned, deadline, timeTracking, checklists, stickers,
-                    description="", archived=False, completed=False):
+    def create_task(
+        self,
+        token: str,
+        *,
+        title: str,
+        columnId: int,
+        subtasks: List[Dict[str, Any]] | None = None,
+        assigned: List[int] | None = None,
+        deadline: Optional[int] = None,
+        timeTracking: Dict[str, Any] | None = None,
+        checklists: List[Dict[str, Any]] | None = None,
+        stickers: Dict[str, Any] | None = None,
+        description: str = "",
+        archived: bool = False,
+        completed: bool = False,
+    ) -> Dict[str, Any]:
         """
-        Задачи. Создать задачу
-        """
-        payload = {
-            "title": title,
-            "columnId": columnId,
-            "description": description,
-            "archived": archived,
-            "completed": completed,
-            "subtasks": subtasks,
-            "assigned": assigned,
-            "deadline": deadline,
-            "timeTracking": timeTracking,
-            "checklists": checklists,
-            "stickers": stickers
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("POST", f"{self.url}/tasks", json=payload, headers=headers)
-        return response.json()
-
-    def get_task(self, token, taskId):
-        """
-        Задачи. Получить задачу по ID
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
-
-        response = requests.request("GET", f"{self.url}/tasks/{taskId}", headers=headers)
-        return response.json()
-
-    def change_task(self, token, taskId, title, columnId, subtasks, assigned, deadline, timeTracking, checklists, stickers,
-                    description="", archived=False, completed=False):
-        """
-        Задачи. Изменить задачу по ID
+        Задачи → создать карточку с полной структурой (подзадачи, стикеры и т.д.).
         """
         payload = {
             "title": title,
@@ -377,43 +323,244 @@ class YouGileRestAPI:
             "description": description,
             "archived": archived,
             "completed": completed,
+            "subtasks": subtasks or [],
+            "assigned": assigned or [],
+            "deadline": deadline,
+            "timeTracking": timeTracking or {},
+            "checklists": checklists or [],
+            "stickers": stickers or {},
+        }
+        return self._request("POST", "/tasks", token=token, json=payload)
+
+    def get_task(self, token: str, taskId: int) -> Dict[str, Any]:
+        """Задачи → получить одну задачу по её ID."""
+        return self._request("GET", f"/tasks/{taskId}", token=token)
+
+    def change_task(
+        self,
+        token: str,
+        taskId: int,
+        *,
+        title: Optional[str] = None,
+        columnId: Optional[int] = None,
+        subtasks: Optional[List[Dict[str, Any]]] = None,
+        assigned: Optional[List[int]] = None,
+        deadline: Optional[int] = None,
+        timeTracking: Optional[Dict[str, Any]] = None,
+        checklists: Optional[List[Dict[str, Any]]] = None,
+        stickers: Optional[Dict[str, Any]] = None,
+        description: Optional[str] = None,
+        archived: Optional[bool] = None,
+        completed: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """
+        Задачи → изменить карточку. Передавайте только те поля, которые хотите
+        поменять — остальные останутся прежними.
+        """
+        payload: Dict[str, Any] = {}
+        for k, v in {
+            "title": title,
+            "columnId": columnId,
             "subtasks": subtasks,
             "assigned": assigned,
             "deadline": deadline,
             "timeTracking": timeTracking,
             "checklists": checklists,
-            "stickers": stickers
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+            "stickers": stickers,
+            "description": description,
+            "archived": archived,
+            "completed": completed,
+        }.items():
+            if v is not None:
+                payload[k] = v
+        return self._request("PUT", f"/tasks/{taskId}", token=token, json=payload)
 
-        response = requests.request("PUT", f"{self.url}/tasks/{taskId}", json=payload, headers=headers)
-        return response.json()
+    def delete_task(self, token: str, taskId: int) -> None:
+        """Задачи → физически удалить карточку."""
+        self._request("DELETE", f"/tasks/{taskId}", token=token)
 
-    # def get_chat_subscribers(self, token, taskId):
-    #     """
-    #     Задачи. Получить список участников чата задачи
-    #     """
-    #     headers = {
-    #         "Content-Type": "application/json",
-    #         "Authorization": f"Bearer {token}"
-    #     }
-    #
-    #     response = requests.request("GET", f"{self.url}/tasks/{taskId}/chat-subscribers", headers=headers)
-    #     self.chat_subscribers = response.json()
-    #     return self.chat_subscribers
-    #
-    # def change_chat_subscribers(self, token, taskId, content):
-    #     """
-    #     Задачи. Изменить список участников чата задачи
-    #     """
-    #     payload = {"content": content}
-    #     headers = {
-    #         "Content-Type": "application/json",
-    #         "Authorization": f"Bearer {token}"
-    #     }
-    #
-    #     response = requests.request("PUT", f"{self.url}/tasks/{taskId}/chat-subscribers", json=payload, headers=headers)
-    #     return response.json()
+    # ------------ подписчики чата задачи ---------------------------------- #
+
+    def get_chat_subscribers(self, token: str, taskId: int) -> List[int]:
+        """Задачи → получить ID пользователей, подписанных на чат карточки."""
+        self.chat_subscribers = self._request("GET", f"/tasks/{taskId}/chat-subscribers", token=token)
+        return self.chat_subscribers
+
+    def change_chat_subscribers(self, token: str, taskId: int, subscribers: List[int]) -> Dict[str, Any]:
+        """Задачи → заменить список подписчиков чата карточки."""
+        return self._request(
+            "PUT", f"/tasks/{taskId}/chat-subscribers", token=token, json={"content": subscribers}
+        )
+
+    # ===================================================================== #
+    #                           7.  DEPARTMENTS                             #
+    # ===================================================================== #
+
+    def get_departments(self, token: str) -> List[Dict[str, Any]]:
+        """Отделы → вернуть список отделов компании."""
+        return self._request("GET", "/departments", token=token)
+
+    def create_department(
+        self,
+        token: str,
+        title: str,
+        users: List[int] | None = None,
+        color: str | None = None,
+    ) -> Dict[str, Any]:
+        """Отделы → создать новый отдел (можно сразу назначить участников)."""
+        payload = {"title": title}
+        if users is not None:
+            payload["users"] = users
+        if color is not None:
+            payload["color"] = color
+        return self._request("POST", "/departments", token=token, json=payload)
+
+    def get_department(self, token: str, departmentId: int) -> Dict[str, Any]:
+        """Отделы → получить один отдел по ID."""
+        return self._request("GET", f"/departments/{departmentId}", token=token)
+
+    def change_department(
+        self,
+        token: str,
+        departmentId: int,
+        *,
+        title: Optional[str] = None,
+        users: Optional[List[int]] = None,
+        color: Optional[str] = None,
+        delete: bool = False,
+    ) -> Dict[str, Any]:
+        """Отделы → переименовать, изменить состав или удалить отдел."""
+        payload = {"deleted": delete}
+        if title is not None:
+            payload["title"] = title
+        if users is not None:
+            payload["users"] = users
+        if color is not None:
+            payload["color"] = color
+        return self._request("PUT", f"/departments/{departmentId}", token=token, json=payload)
+
+    def delete_department(self, token: str, departmentId: int) -> None:
+        """Отделы → физически удалить отдел."""
+        self._request("DELETE", f"/departments/{departmentId}", token=token)
+
+    # ===================================================================== #
+    #                         8.  PROJECT ROLES                             #
+    # ===================================================================== #
+
+    def get_project_roles(self, token: str) -> List[Dict[str, Any]]:
+        """Роли проекта → получить справочник ролей."""
+        return self._request("GET", "/project-roles", token=token)
+
+    def create_project_role(self, token: str, title: str) -> Dict[str, Any]:
+        """Роли проекта → добавить новую роль."""
+        return self._request("POST", "/project-roles", token=token, json={"title": title})
+
+    def change_project_role(self, token: str, roleId: int, title: str, delete: bool = False) -> Dict[str, Any]:
+        """Роли проекта → переименовать или удалить роль (delete=True)."""
+        return self._request(
+            "PUT",
+            f"/project-roles/{roleId}",
+            token=token,
+            json={"title": title, "deleted": delete},
+        )
+
+    def delete_project_role(self, token: str, roleId: int) -> None:
+        """Роли проекта → физически удалить роль."""
+        self._request("DELETE", f"/project-roles/{roleId}", token=token)
+
+    # ===================================================================== #
+    #                       9.  GROUP CHATS & MESSAGES                      #
+    # ===================================================================== #
+
+    def get_group_chats(self, token: str) -> List[Dict[str, Any]]:
+        """Групповые чаты → список всех корпоративных чатов."""
+        return self._request("GET", "/group-chats", token=token)
+
+    def get_group_chat(self, token: str, chatId: int) -> Dict[str, Any]:
+        """Групповые чаты → получить один чат по ID (мета-информация)."""
+        return self._request("GET", f"/group-chats/{chatId}", token=token)
+
+    def get_chat_messages(self, token: str, chatId: int) -> List[Dict[str, Any]]:
+        """Групповые чаты → загрузить последние сообщения чата."""
+        return self._request("GET", f"/group-chats/{chatId}/messages", token=token)
+
+    def send_chat_message(self, token: str, chatId: int, text: str) -> Dict[str, Any]:
+        """Групповые чаты → отправить сообщение в чат."""
+        return self._request("POST", f"/group-chats/{chatId}/messages", token=token, json={"text": text})
+
+    # ===================================================================== #
+    #                        10.  EVENT SUBSCRIPTIONS                       #
+    # ===================================================================== #
+
+    def get_event_subscriptions(self, token: str, with_deleted: bool = False) -> List[Dict[str, Any]]:
+        """Веб-хуки → получить все подписки на события (webhook)."""
+        params = {"deleted": "true"} if with_deleted else None
+        return self._request("GET", "/event-subs", token=token, params=params)
+
+    def create_event_subscription(self, token: str, url: str, event: str) -> Dict[str, Any]:
+        """Веб-хуки → создать подписку на конкретное событие."""
+        return self._request("POST", "/event-subs", token=token, json={"url": url, "event": event})
+
+    def change_event_subscription(
+        self, token: str, subId: int, url: Optional[str] = None, delete: bool = False
+    ) -> Dict[str, Any]:
+        """Веб-хуки → изменить URL или удалить подписку."""
+        payload: Dict[str, Any] = {"deleted": delete}
+        if url is not None:
+            payload["url"] = url
+        return self._request("PUT", f"/event-subs/{subId}", token=token, json=payload)
+
+    def delete_event_subscription(self, token: str, subId: int) -> None:
+        """Веб-хуки → физически удалить подписку на событие."""
+        self._request("DELETE", f"/event-subs/{subId}", token=token)
+
+    # ===================================================================== #
+    #                             11.  STICKERS                            #
+    # ===================================================================== #
+
+    # Generic-методы — позволяют не дублировать код для разных типов стикеров
+    def _generic_sticker(
+        self,
+        token: str,
+        sticker_type: str,
+        *,
+        method: str,
+        stickerId: int | None = None,
+        payload: dict | None = None,
+    ):
+        """
+        Внутренняя универсальная обёртка для CRUD-операций над стикерами.
+        :param sticker_type: тип коллекции, например 'text-stickers'
+        :param method: HTTP-метод ('GET', 'POST', …)
+        """
+        path = f"/{sticker_type}" + (f"/{stickerId}" if stickerId else "")
+        return self._request(method, path, token=token, json=payload)
+
+    # ------------------------- Text-stickers ----------------------------- #
+
+    def get_text_stickers(self, token: str):
+        """Стикеры-тексты → получить справочник пользовательских ярлыков."""
+        return self._generic_sticker(token, "text-stickers", method="GET")
+
+    def create_text_sticker(self, token: str, text: str, color: str):
+        """Стикеры-тексты → создать новый текстовый стикер."""
+        return self._generic_sticker(
+            token,
+            "text-stickers",
+            method="POST",
+            payload={"text": text, "color": color},
+        )
+
+    # -------------- Аналогичные эндпоинты для статусов/спринтов ----------- #
+
+    def get_status_text_stickers(self, token: str):
+        """Стикеры-статусы (текст) → получить список."""
+        return self._generic_sticker(token, "status-text-stickers", method="GET")
+
+    def get_sprint_stickers(self, token: str):
+        """Стикеры спринта → получить список."""
+        return self._generic_sticker(token, "sprint-sticker", method="GET")
+
+    def get_status_sprint_stickers(self, token: str):
+        """Стикеры-статусы (спринт) → получить список."""
+        return self._generic_sticker(token, "status-sprint-sticker", method="GET")
