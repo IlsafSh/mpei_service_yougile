@@ -1151,15 +1151,25 @@ class MPEIRuzParser:
         Сохранение расписания в JSON-файл.
 
         Args:
-            schedule (list): Список дней с расписанием
+            schedule (list): Список дней с расписанием занятий
             filename (str): Имя файла для сохранения
         """
         try:
-            with open(filename, 'w', encoding='utf-8') as f:
+            # Создаем директорию для JSON-файлов, если она не существует
+            json_dir = os.path.join(os.getcwd(), "data", "json_schedules")
+            os.makedirs(json_dir, exist_ok=True)
+
+            # Полный путь к файлу
+            filepath = os.path.join(json_dir, filename)
+
+            # Сохраняем расписание в JSON-файл
+            with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(schedule, f, ensure_ascii=False, indent=4)
-            self.logger.info(f"Расписание сохранено в файл: {filename}")
+
+            self.logger.info(f"Расписание сохранено в файл: {filepath}")
+
         except Exception as e:
-            self.logger.error(f"Ошибка при сохранении расписания в файл: {e}", exc_info=True)
+            self.logger.error(f"Ошибка при сохранении расписания в JSON: {e}", exc_info=True)
 
     def _save_diagnostic_screenshot(self, filename):
         """
@@ -1197,13 +1207,6 @@ class MPEIRuzParser:
                 # Сохраняем файл логов
                 log_file = os.path.join(self.diagnostic_dir, 'parser.log')
                 has_log_file = os.path.exists(log_file)
-
-                if has_log_file:
-                    # Создаем временную копию файла логов
-                    temp_log = os.path.join(os.getcwd(), 'temp_parser.log')
-                    with open(log_file, 'r', encoding='utf-8') as src:
-                        with open(temp_log, 'w', encoding='utf-8') as dst:
-                            dst.write(src.read())
 
                 # Удаляем все файлы, кроме логов
                 for filename in os.listdir(self.diagnostic_dir):
