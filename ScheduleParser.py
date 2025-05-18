@@ -13,6 +13,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.keys import Keys
+from bs4 import BeautifulSoup
 
 
 class MPEIRuzParser:
@@ -48,25 +49,6 @@ class MPEIRuzParser:
         TYPE_TEACHER: 13,  # Индекс элемента "Преподаватель"
         TYPE_ROOM: 14,  # Индекс элемента "Аудитория"
     }
-
-    # Типы занятий
-    LESSON_TYPES = [
-        "Лекция",
-        "Практическое занятие",
-        "Лабораторная работа",
-        "Семинар",
-        "Консультация",
-        "Экзамен",
-        "Зачет"
-    ]
-
-    # Дополнительные типы занятий
-    ADDITIONAL_TYPES = [
-        "по выбору",
-        "факультатив",
-        "курсовая работа",
-        "курсовой проект"
-    ]
 
     # Академические звания и должности для идентификации преподавателей
     ACADEMIC_TITLES = [
@@ -999,50 +981,56 @@ class MPEIRuzParser:
                         if lesson_text:
                             self.logger.debug(f"Занятие для дня {day_idx + 1}: {lesson_text}")
 
-                            # Пытаемся найти тег strong для названия предмета
-                            try:
-                                subject_elem = lesson_cell.find_element(By.TAG_NAME, "strong")
+                            # Получаем HTML-код ячейки для более точного парсинга
+                            lesson_html = lesson_cell.get_attribute('innerHTML')
+
+                            # Используем BeautifulSoup для парсинга HTML
+                            soup = BeautifulSoup(lesson_html, 'html.parser')
+
+                            # Извлекаем название предмета из тега strong
+                            subject_elem = soup.find('strong')
+                            if subject_elem:
                                 subject = subject_elem.text.strip()
+                            else:
+                                # Если тег strong не найден, пытаемся извлечь название из текста
+                                subject = lesson_text.split('\n')[0] if '\n' in lesson_text else lesson_text
 
-                                # Извлекаем тип занятия и предмет
-                                lesson_type, subject_name = self._extract_lesson_type_and_subject(subject)
+                            # Извлекаем тип занятия из текста между тегом strong и первой ссылкой
+                            lesson_type = self._extract_lesson_type_from_html(soup)
 
-                                # Пытаемся найти аудиторию
-                                room = "Не указана"
-                                try:
-                                    room_link = lesson_cell.find_element(By.TAG_NAME, "a")
-                                    room = room_link.text.strip()
-                                except NoSuchElementException:
-                                    # Если ссылки нет, пытаемся извлечь аудиторию из текста
-                                    room_match = lesson_text.split('\n')
-                                    if len(room_match) > 1:
-                                        for line in room_match:
-                                            if "Корпус" in line:
-                                                room = line.strip()
-                                                break
+                            # Пытаемся найти аудиторию
+                            room = ""
+                            room_link = soup.find('a')
+                            if room_link:
+                                room = room_link.text.strip()
+                            else:
+                                # Если ссылки нет, пытаемся извлечь аудиторию из текста
+                                room_match = lesson_text.split('\n')
+                                if len(room_match) > 1:
+                                    for line in room_match:
+                                        if "Корпус" in line:
+                                            room = line.strip()
+                                            break
 
-                                # Извлекаем информацию о преподавателе
-                                teacher = ""
-                                if schedule_type != self.TYPE_TEACHER:  # Не извлекаем преподавателя для расписания преподавателя
-                                    teacher = self._extract_teacher_info(lesson_text, lesson_type, object_name)
+                            # Извлекаем информацию о преподавателе
+                            teacher = ""
+                            if schedule_type != self.TYPE_TEACHER:  # Не извлекаем преподавателя для расписания преподавателя
+                                teacher = self._extract_teacher_info(lesson_text, lesson_type, object_name)
 
-                                # Добавляем занятие в расписание соответствующего дня
-                                lesson_info = {
-                                    "time": time_range,
-                                    "subject": subject_name,
-                                    "type": lesson_type,
-                                    "room": room
-                                }
+                            # Добавляем занятие в расписание соответствующего дня
+                            lesson_info = {
+                                "time": time_range,
+                                "subject": subject,
+                                "type": lesson_type,
+                                "room": room
+                            }
 
-                                # Добавляем информацию о преподавателе для расписания групп и аудиторий
-                                if schedule_type != self.TYPE_TEACHER:
-                                    lesson_info["teacher"] = teacher
+                            # Добавляем информацию о преподавателе для расписания групп и аудиторий
+                            if schedule_type != self.TYPE_TEACHER:
+                                lesson_info["teacher"] = teacher
 
-                                days_dict[day_idx]["lessons"].append(lesson_info)
-                                self.logger.debug(f"Занятие добавлено в расписание дня {day_idx + 1}")
-
-                            except NoSuchElementException:
-                                self.logger.warning(f"В ячейке дня {day_idx + 1} нет тега strong")
+                            days_dict[day_idx]["lessons"].append(lesson_info)
+                            self.logger.debug(f"Занятие добавлено в расписание дня {day_idx + 1}")
 
             # Преобразуем словарь дней в список и фильтруем дни без занятий
             schedule = [day for day in days_dict.values() if day["lessons"]]
@@ -1055,46 +1043,49 @@ class MPEIRuzParser:
             self._save_diagnostic_screenshot(f"error_parse_week_{week_number}.png")
             return []
 
-    def _extract_lesson_type_and_subject(self, subject_text):
+    def _extract_lesson_type_from_html(self, soup):
         """
-        Извлечение типа занятия и названия предмета из текста.
+        Извлечение типа занятия из HTML-кода ячейки.
 
         Args:
-            subject_text (str): Текст с названием предмета и типом занятия
+            soup (BeautifulSoup): Объект BeautifulSoup с HTML-кодом ячейки
 
         Returns:
-            tuple: (тип занятия, название предмета)
+            str: Тип занятия
         """
         try:
-            # Проверяем наличие типа занятия в скобках
-            if "(" in subject_text and ")" in subject_text:
-                # Извлекаем тип занятия из скобок
-                type_in_brackets = subject_text[subject_text.rfind("(") + 1:subject_text.rfind(")")].strip()
+            # Находим тег strong (название предмета)
+            subject_elem = soup.find('strong')
+            if not subject_elem:
+                return ""
 
-                # Проверяем, является ли извлеченный текст типом занятия
-                if type_in_brackets in self.LESSON_TYPES:
-                    lesson_type = type_in_brackets
-                    subject_name = subject_text[:subject_text.rfind("(")].strip()
-                elif type_in_brackets.lower() in [t.lower() for t in self.ADDITIONAL_TYPES]:
-                    # Если это дополнительный тип (по выбору, факультатив и т.д.)
-                    lesson_type = type_in_brackets
-                    subject_name = subject_text[:subject_text.rfind("(")].strip()
-                else:
-                    # Если текст в скобках не является типом занятия, считаем его частью названия
-                    subject_name = subject_text
+            # Находим текст между тегом strong и первой ссылкой
+            # Это будет текст, который идет после названия предмета и до аудитории
+            lesson_type = ""
 
-                    # Пытаемся определить тип занятия по умолчанию
-                    lesson_type = "Лекция"  # По умолчанию
-            else:
-                # Если скобок нет, считаем весь текст названием предмета
-                subject_name = subject_text
-                lesson_type = "Лекция"  # По умолчанию
+            # Получаем следующий элемент после strong
+            next_elem = subject_elem.next_sibling
 
-            return lesson_type, subject_name
+            # Собираем весь текст до первой ссылки
+            while next_elem and not (hasattr(next_elem, 'name') and next_elem.name == 'a'):
+                if isinstance(next_elem, str):
+                    lesson_type += next_elem
+                elif hasattr(next_elem, 'name') and next_elem.name == 'br':
+                    lesson_type += " "
+                next_elem = next_elem.next_sibling
+
+            # Очищаем и форматируем результат
+            lesson_type = re.sub(r'\s+', ' ', lesson_type).strip()
+
+            # Если тип занятия не найден, возвращаем ""
+            if not lesson_type:
+                return ""
+
+            return lesson_type
 
         except Exception as e:
-            self.logger.error(f"Ошибка при извлечении типа занятия и предмета: {e}", exc_info=True)
-            return "Лекция", subject_text  # Возвращаем значения по умолчанию в случае ошибки
+            self.logger.error(f"Ошибка при извлечении типа занятия из HTML: {e}", exc_info=True)
+            return ""  # Возвращаем значение по умолчанию в случае ошибки
 
     def _extract_teacher_info(self, lesson_text, lesson_type, object_name=None):
         """
@@ -1129,10 +1120,6 @@ class MPEIRuzParser:
 
                 # Исключаем строки, которые совпадают с названием объекта (группы)
                 if object_name and line == object_name:
-                    continue
-
-                # Исключаем строки, которые являются типами занятий
-                if line in self.LESSON_TYPES or line.lower() in [t.lower() for t in self.LESSON_TYPES]:
                     continue
 
                 filtered_lines.append(line)
