@@ -203,7 +203,6 @@ class MPEIRuzParser:
                     filename = f"schedule_{schedule_type}_{name.replace(' ', '_')}.json"
 
                 self._save_schedule_to_json(all_schedule, filename)
-                self.logger.info(f"Расписание сохранено в файл: {filename}")
 
             return all_schedule
 
@@ -308,7 +307,6 @@ class MPEIRuzParser:
                     filename = f"schedule_{schedule_type}_{name.replace(' ', '_')}_{start_date.replace('.', '_')}-{end_date.replace('.', '_')}.json"
 
                 self._save_schedule_to_json(filtered_schedule, filename)
-                self.logger.info(f"Отфильтрованное расписание сохранено в файл: {filename}")
 
             return filtered_schedule
 
@@ -1155,12 +1153,8 @@ class MPEIRuzParser:
             filename (str): Имя файла для сохранения
         """
         try:
-            # Создаем директорию для JSON-файлов, если она не существует
-            json_dir = os.path.join(os.getcwd(), "data", "json_schedules")
-            os.makedirs(json_dir, exist_ok=True)
-
             # Полный путь к файлу
-            filepath = os.path.join(json_dir, filename)
+            filepath = os.path.join(os.getcwd(), filename)
 
             # Сохраняем расписание в JSON-файл
             with open(filepath, "w", encoding="utf-8") as f:
