@@ -68,8 +68,9 @@ class MPEIRuzParser:
             max_weeks (int): Максимальное количество недель для парсинга (от 0 до max_weeks)
             cleanup_files (bool): Удалять ли вспомогательные файлы после завершения работы
         """
-        # Создаем директорию для диагностических файлов
-        self.diagnostic_dir = os.path.join(os.getcwd(), "diagnostic_files")
+        # Находим корень проекта и создаем директорию для диагностических файлов
+        self.project_root = self._find_project_root()
+        self.diagnostic_dir = os.path.join(self.project_root, "diagnostic_files")
         os.makedirs(self.diagnostic_dir, exist_ok=True)
 
         # Настраиваем логирование
@@ -92,6 +93,32 @@ class MPEIRuzParser:
         self.driver = webdriver.Firefox(options=firefox_options)
         self.driver.implicitly_wait(10)  # Увеличиваем время ожидания элементов
         self.wait = WebDriverWait(self.driver, 10)
+
+    def _find_project_root(self) -> str:
+        """
+        Находит корневую директорию проекта.
+        Ищет вверх по дереву директорий, пока не найдет main.py или requirements.txt.
+
+        :return: Абсолютный путь к корневой директории проекта
+        """
+        # Начинаем с текущей директории
+        current_dir = os.path.abspath(os.getcwd())
+
+        # Ищем вверх по дереву директорий
+        while True:
+            # Проверяем наличие маркеров корневой директории проекта
+            if os.path.exists(os.path.join(current_dir, "main.py")) or \
+               os.path.exists(os.path.join(current_dir, "requirements.txt")):
+                return current_dir
+
+            # Переходим на уровень выше
+            parent_dir = os.path.dirname(current_dir)
+
+            # Если достигли корня файловой системы, возвращаем текущую директорию
+            if parent_dir == current_dir:
+                return os.getcwd()
+
+            current_dir = parent_dir
 
     def _setup_logging(self):
         """Настройка логирования в файл"""
@@ -1154,7 +1181,7 @@ class MPEIRuzParser:
         """
         try:
             # Полный путь к файлу
-            filepath = os.path.join(os.getcwd(), filename)
+            filepath = os.path.join(self._find_project_root(), filename)
 
             # Сохраняем расписание в JSON-файл
             with open(filepath, "w", encoding="utf-8") as f:
@@ -1205,7 +1232,7 @@ class MPEIRuzParser:
                 # Удаляем все файлы, кроме логов
                 for filename in os.listdir(self.diagnostic_dir):
                     file_path = os.path.join(self.diagnostic_dir, filename)
-                    if os.path.isfile(file_path) and filename != 'parser.log':
+                    if os.path.isfile(file_path) and '.log' not in filename:
                         os.remove(file_path)
                         self.logger.debug(f"Удален файл: {file_path}")
 
