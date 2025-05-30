@@ -1,20 +1,11 @@
 """
 Пример использования YouGile API клиента.
 
-Этот файл содержит примеры использования всех ресурсов и методов API с использованием моделей данных.
-Примечание: Для выполнения всех запросов (кроме авторизации) требуется действующий токен авторизации.
+Этот файл содержит примеры использования всех ресурсов и методов API.
+Примечание: Для выполнения всех запросов (кроме авторизации)_ требуется действующий токен авторизации.
 """
 
 from yougile_api import YouGileClient
-from yougile_api.models.employee import Employee
-from yougile_api.models.project import Project
-from yougile_api.models.project_role import ProjectRole
-from yougile_api.models.department import Department
-from yougile_api.models.board import Board
-from yougile_api.models.column import Column
-from yougile_api.models.task import Task
-from yougile_api.models.string_sticker import StringSticker
-from yougile_api.models.sprint_sticker import SprintSticker
 
 
 def auth_examples(client):
@@ -61,7 +52,7 @@ def auth_examples(client):
 
 
 def employees_examples(client):
-    """Примеры работы с сотрудниками с использованием модели Employee."""
+    """Примеры работы с сотрудниками."""
     print("\n=== Примеры работы с сотрудниками ===")
 
     # Получение списка сотрудников
@@ -69,73 +60,60 @@ def employees_examples(client):
         employees_response = client.employees.list(limit=10)
         print(f"Employees Response: {employees_response}")
 
-        employees_list = []
         if 'content' in employees_response:
-            # Преобразование словарей в объекты модели Employee
-            for emp_data in employees_response['content']:
-                employee_model = Employee(**emp_data)
-                employees_list.append(employee_model)
+            employees = employees_response['content']
+        else:
+            employees = []
 
-        print(f"Получено сотрудников: {len(employees_list)}")
+        print(f"Получено сотрудников: {len(employees)}")
 
-        # Вывод информации о сотрудниках через модель
-        for employee in employees_list:
-            print(f"Сотрудник: {employee.email} (ID: {employee.id})")
+        # Вывод информации о сотрудниках
+        for employee in employees:
+            print(f"Сотрудник: {employee.get('email')} (ID: {employee.get('id')})")
 
         # Если есть сотрудники, используем первого для примеров
-        if employees_list:
-            employee_id = employees_list[0].id
+        if employees:
+            employee_id = employees[0]['id']
 
             # Получение сотрудника по ID
-            employee_data = client.employees.get(employee_id)
-            employee_model = Employee(**employee_data)
-            print(f"\nПолучен сотрудник: {employee_model.email}")
-            print(f"Администратор: {employee_model.is_admin}")
+            employee = client.employees.get(employee_id)
+            print(f"\nПолучен сотрудник: {employee.get('email')}")
 
     except Exception as e:
         print(f"Ошибка при работе с сотрудниками: {e}")
 
-    # Создание нового сотрудника с использованием модели
+    # Создание нового сотрудника
     try:
-        # Создаем экземпляр модели
-        new_employee_model = Employee(
-            email="new.employee@example.com",
-            is_admin=False
+        new_employee = client.employees.create(
+            email="new.employee@example.com"
         )
-
-        # Преобразуем модель в словарь для API запроса
-        new_employee_data = new_employee_model.dict(by_alias=True, exclude_none=True)
-
-        # Отправляем запрос на создание
-        created_employee_data = client.employees.create(**new_employee_data)
-
-        # Преобразуем ответ в модель
-        created_employee = Employee(**created_employee_data)
-        print(f"Создан новый сотрудник: {created_employee.email} (ID: {created_employee.id})")
-
-        # Обновление сотрудника с использованием модели
-        created_employee.is_admin = True
-        updated_data = created_employee.dict(by_alias=True, exclude_none=True)
-
-        updated_employee_data = client.employees.update(
-            id=created_employee.id,
-            **updated_data
-        )
-
-        updated_employee = Employee(**updated_employee_data)
-        print(f"Сотрудник обновлен: {updated_employee.email} (Администратор: {updated_employee.is_admin})")
-
-        # Удаление сотрудника
-        deleted_employee_data = client.employees.delete(created_employee.id)
-        deleted_employee = Employee(**deleted_employee_data)
-        print(f"Сотрудник удален: {deleted_employee.email}")
+        print(f"Создан новый сотрудник: {new_employee}")
 
     except Exception as e:
-        print(f"Ошибка при работе с сотрудником: {e}")
+        print(f"Ошибка при создании сотрудника: {e}")
+
+    # Обновление сотрудника
+    try:
+        updated_employee = client.employees.update(
+            id=new_employee.get('id'),
+            is_admin=False
+        )
+        print(f"Сотрудник обновлен: {updated_employee}")
+
+    except Exception as e:
+        print(f"Ошибка при создании сотрудника: {e}")
+
+    # Удаление сотрудника
+    try:
+        deleted_employee = client.employees.delete(new_employee.get('id'))
+        print(f"Сотрудник удален: {deleted_employee}")
+
+    except Exception as e:
+        print(f"Ошибка при создании сотрудника: {e}")
 
 
 def projects_examples(client):
-    """Примеры работы с проектами с использованием модели Project."""
+    """Примеры работы с проектами."""
     print("\n=== Примеры работы с проектами ===")
 
     # Получение списка проектов
@@ -143,121 +121,91 @@ def projects_examples(client):
         projects_response = client.projects.list(limit=10)
         print(f"Projects Response: {projects_response}")
 
-        projects_list = []
         if 'content' in projects_response:
-            # Преобразование словарей в объекты модели Project
-            for proj_data in projects_response['content']:
-                project_model = Project(**proj_data)
-                projects_list.append(project_model)
+            projects = projects_response['content']
+        else:
+            projects = []
 
-        print(f"Получено проектов: {len(projects_list)}")
+        print(f"Получено проектов: {len(projects)}")
 
-        # Вывод информации о проектах через модель
-        for project in projects_list:
-            print(f"Проект: {project.title} (ID: {project.id})")
+        # Вывод информации о проектах
+        for project in projects:
+            print(f"Проект: {project.get('title')} (ID: {project.get('id')})")
 
         # Если есть проекты, используем первый для примеров
-        if projects_list:
-            project_id = projects_list[0].id
+        if projects:
+            project_id = projects[0]['id']
 
             # Получение проекта по ID
-            project_data = client.projects.get(project_id)
-            project_model = Project(**project_data)
-            print(f"\nПолучен проект: {project_model.title}")
-            print(f"Пользователи проекта: {project_model.users}")
+            project = client.projects.get(project_id)
+            print(f"\nПолучен проект: {project.get('title')}")
 
     except Exception as e:
         print(f"Ошибка при работе с проектами: {e}")
 
-    # Создание нового проекта с использованием модели
+    # Создание нового проекта
     try:
-        # Создаем экземпляр модели
-        new_project_model = Project(
+        new_project = client.projects.create(
             title="Новый тестовый проект",
             users={"807972fa-dcf1-4d52-a9a3-9b9c8ef0100d": "admin"}
         )
+        print(f"Создан новый проект: {new_project})")
 
-        # Преобразуем модель в словарь для API запроса
-        new_project_data = new_project_model.dict(by_alias=True, exclude_none=True)
-
-        # Отправляем запрос на создание
-        created_project_data = client.projects.create(**new_project_data)
-
-        # Преобразуем ответ в модель
-        created_project = Project(**created_project_data)
-        print(f"Создан новый проект: {created_project.title} (ID: {created_project.id})")
-
-        # Обновление проекта с использованием модели
-        created_project.title = "Обновленный проект"
-        updated_data = created_project.dict(by_alias=True, exclude_none=True)
-
-        updated_project_data = client.projects.update(
-            id=created_project.id,
-            **updated_data
+        # Обновление проекта
+        updated_project = client.projects.update(
+            id=new_project.get('id'),
+            title="Обновленный проект"
         )
+        print(f"Проект обновлен: {updated_project}")
 
-        updated_project = Project(**updated_project_data)
-        print(f"Проект обновлен: {updated_project.title}")
-
-        # Удаление проекта (через обновление поля deleted)
-        updated_project.deleted = True
-        delete_data = updated_project.dict(by_alias=True, exclude_none=True)
-
-        deleted_project_data = client.projects.update(
-            id=updated_project.id,
-            **delete_data
+        # Удаление проекта
+        deleted_project = client.projects.update(
+            id=new_project.get('id'),
+            title=new_project.get('title'),
+            deleted=True
         )
-
-        deleted_project = Project(**deleted_project_data)
-        print(f"Проект удален: {deleted_project.title} (Удален: {deleted_project.deleted})")
-
+        print(f"Проект удален: {deleted_project}")
     except Exception as e:
-        print(f"Ошибка при работе с проектом: {e}")
+        print(f"Ошибка при создании проекта: {e}")
 
 
 def project_roles_examples(client):
-    """Примеры работы с ролями проекта с использованием модели ProjectRole."""
+    """Примеры работы с ролями проекта."""
     print("\n=== Примеры работы с ролями проекта ===")
 
     # Получение списка ролей проекта
     try:
         # Для получения ролей нужен ID проекта
         projects_response = client.projects.list(limit=1)
+        print(f"Projects Response: {projects_response}")
 
-        projects_list = []
+        projects = []
         if 'content' in projects_response:
-            for proj_data in projects_response['content']:
-                project_model = Project(**proj_data)
-                projects_list.append(project_model)
+            projects = projects_response['content']
 
-        if projects_list:
-            project_id = projects_list[0].id
-            print(f"Используем проект: {projects_list[0].title} (ID: {project_id})")
+        if projects:
+            project_id = projects[0]['id']
 
             roles_response = client.project_roles.list(project_id=project_id, limit=10)
-
-            roles_list = []
+            print(f"Roles Response: {roles_response}")
             if 'content' in roles_response:
-                # Преобразование словарей в объекты модели ProjectRole
-                for role_data in roles_response['content']:
-                    role_model = ProjectRole(**role_data)
-                    roles_list.append(role_model)
+                roles = roles_response['content']
+            else:
+                roles = []
 
-            print(f"Получено ролей: {len(roles_list)}")
+            print(f"Получено ролей: {len(roles)}")
 
-            # Вывод информации о ролях через модель
-            for role in roles_list:
-                print(f"Роль: {role.name} (ID: {role.id})")
+            # Вывод информации о ролях
+            for role in roles:
+                print(f"Роль: {role.get('name')} (ID: {role.get('id')})")
 
             # Если есть роли, используем первую для примеров
-            if roles_list:
-                role_id = roles_list[0].id
+            if roles:
+                role_id = roles[0]['id']
 
                 # Получение роли по ID
-                role_data = client.project_roles.get(parent_id=project_id, id=role_id)
-                role_model = ProjectRole(**role_data)
-                print(f"\nПолучена роль: {role_model.name}")
-                print(f"Разрешения роли: {role_model.permissions}")
+                role = client.project_roles.get(parent_id=project_id, id=role_id)
+                print(f"\nПолучена роль: {role.get('name')}")
         else:
             print("Нет доступных проектов для получения ролей")
 
@@ -265,306 +213,236 @@ def project_roles_examples(client):
         print(f"Ошибка при работе с ролями проекта: {e}")
 
     try:
-        # Создание новой роли с использованием модели
+        # Создание новой роли
         permissions = {
+        "editTitle": True,
+        "delete": True,
+        "addBoard": True,
+        "boards": {
             "editTitle": True,
             "delete": True,
-            "addBoard": True,
-            "boards": {
+            "move": True,
+            "showStickers": True,
+            "editStickers": True,
+            "addColumn": True,
+            "columns": {
                 "editTitle": True,
                 "delete": True,
-                "move": True,
-                "showStickers": True,
-                "editStickers": True,
-                "addColumn": True,
-                "columns": {
-                    "editTitle": True,
+                "move": "no",
+                "addTask": True,
+                "allTasks": {
+                    "show": True,
                     "delete": True,
+                    "editTitle": True,
+                    "editDescription": True,
+                    "complete": True,
+                    "close": True,
+                    "assignUsers": "no",
+                    "connect": True,
+                    "editSubtasks": "no",
+                    "editStickers": True,
+                    "editPins": True,
                     "move": "no",
-                    "addTask": True,
-                    "allTasks": {
-                        "show": True,
-                        "delete": True,
-                        "editTitle": True,
-                        "editDescription": True,
-                        "complete": True,
-                        "close": True,
-                        "assignUsers": "no",
-                        "connect": True,
-                        "editSubtasks": "no",
-                        "editStickers": True,
-                        "editPins": True,
-                        "move": "no",
-                        "sendMessages": True,
-                        "sendFiles": True,
-                        "editWhoToNotify": "no"
-                    },
-                    "withMeTasks": {
-                        "show": True,
-                        "delete": True,
-                        "editTitle": True,
-                        "editDescription": True,
-                        "complete": True,
-                        "close": True,
-                        "assignUsers": "no",
-                        "connect": True,
-                        "editSubtasks": "no",
-                        "editStickers": True,
-                        "editPins": True,
-                        "move": "no",
-                        "sendMessages": True,
-                        "sendFiles": True,
-                        "editWhoToNotify": "no"
-                    },
-                    "myTasks": {
-                        "show": True,
-                        "delete": True,
-                        "editTitle": True,
-                        "editDescription": True,
-                        "complete": True,
-                        "close": True,
-                        "assignUsers": "no",
-                        "connect": True,
-                        "editSubtasks": "no",
-                        "editStickers": True,
-                        "editPins": True,
-                        "move": "no",
-                        "sendMessages": True,
-                        "sendFiles": True,
-                        "editWhoToNotify": "no"
-                    },
-                    "createdByMeTasks": {
-                        "show": True,
-                        "delete": True,
-                        "editTitle": True,
-                        "editDescription": True,
-                        "complete": True,
-                        "close": True,
-                        "assignUsers": "no",
-                        "connect": True,
-                        "editSubtasks": "no",
-                        "editStickers": True,
-                        "editPins": True,
-                        "move": "no",
-                        "sendMessages": True,
-                        "sendFiles": True,
-                        "editWhoToNotify": "no"
-                    }
+                    "sendMessages": True,
+                    "sendFiles": True,
+                    "editWhoToNotify": "no"
                 },
-                "settings": True
+                "withMeTasks": {
+                    "show": True,
+                    "delete": True,
+                    "editTitle": True,
+                    "editDescription": True,
+                    "complete": True,
+                    "close": True,
+                    "assignUsers": "no",
+                    "connect": True,
+                    "editSubtasks": "no",
+                    "editStickers": True,
+                    "editPins": True,
+                    "move": "no",
+                    "sendMessages": True,
+                    "sendFiles": True,
+                    "editWhoToNotify": "no"
+                },
+                "myTasks": {
+                    "show": True,
+                    "delete": True,
+                    "editTitle": True,
+                    "editDescription": True,
+                    "complete": True,
+                    "close": True,
+                    "assignUsers": "no",
+                    "connect": True,
+                    "editSubtasks": "no",
+                    "editStickers": True,
+                    "editPins": True,
+                    "move": "no",
+                    "sendMessages": True,
+                    "sendFiles": True,
+                    "editWhoToNotify": "no"
+                },
+                "createdByMeTasks": {
+                    "show": True,
+                    "delete": True,
+                    "editTitle": True,
+                    "editDescription": True,
+                    "complete": True,
+                    "close": True,
+                    "assignUsers": "no",
+                    "connect": True,
+                    "editSubtasks": "no",
+                    "editStickers": True,
+                    "editPins": True,
+                    "move": "no",
+                    "sendMessages": True,
+                    "sendFiles": True,
+                    "editWhoToNotify": "no"
+                }
             },
-            "children": {}
+            "settings": True
+        },
+        "children": {}
         }
-
-        # Создаем экземпляр модели
-        new_role_model = ProjectRole(
+        new_role = client.project_roles.create(
+            project_id=project_id,
             name="Новая роль",
             permissions=permissions
         )
+        print(f"Создана новая роль: {new_role})")
 
-        # Преобразуем модель в словарь для API запроса
-        new_role_data = new_role_model.dict(by_alias=True, exclude_none=True)
-
-        # Отправляем запрос на создание
-        created_role_data = client.project_roles.create(
+        # Обновление роли
+        updated_role = client.project_roles.update(
             project_id=project_id,
-            **new_role_data
+            id=new_role.get('id'),
+            name="Обновленная роль",
+            permissions=permissions
         )
-
-        # Преобразуем ответ в модель
-        created_role = ProjectRole(**created_role_data)
-        print(f"Создана новая роль: {created_role.name} (ID: {created_role.id})")
-
-        # Обновление роли с использованием модели
-        created_role.name = "Обновленная роль"
-        updated_data = created_role.dict(by_alias=True, exclude_none=True)
-
-        updated_role_data = client.project_roles.update(
-            project_id=project_id,
-            id=created_role.id,
-            **updated_data
-        )
-
-        updated_role = ProjectRole(**updated_role_data)
-        print(f"Роль обновлена: {updated_role.name}")
+        print(f"Роль обновлена: {updated_role}")
 
         # Удаление роли
-        deleted_role_data = client.project_roles.delete(
+        deleted_role = client.project_roles.delete(
             project_id=project_id,
-            id=updated_role.id
+            id=new_role.get('id')
         )
-
-        if deleted_role_data:
-            print(f"Роль удалена успешно")
-        else:
-            print(f"Ошибка при удалении роли")
-
+        print(f"Роль удалена: {deleted_role}")
     except Exception as e:
-        print(f"Ошибка при работе с ролью: {e}")
+        print(f"Ошибка при создании роли: {e}")
 
 
 def departments_examples(client):
-    """Примеры работы с отделами с использованием модели Department."""
+    """Примеры работы с отделами."""
     print("\n=== Примеры работы с отделами ===")
 
     # Получение списка отделов
     try:
         departments_response = client.departments.list(limit=10)
 
-        departments_list = []
         if 'content' in departments_response:
-            # Преобразование словарей в объекты модели Department
-            for dept_data in departments_response['content']:
-                department_model = Department(**dept_data)
-                departments_list.append(department_model)
+            departments = departments_response['content']
+        else:
+            departments = []
 
-        print(f"Получено отделов: {len(departments_list)}")
+        print(f"Получено отделов: {len(departments)}")
 
-        # Вывод информации об отделах через модель
-        for department in departments_list:
-            print(f"Отдел: {department.title} (ID: {department.id})")
+        # Вывод информации об отделах
+        for department in departments:
+            print(f"Отдел: {department.get('title')} (ID: {department.get('id')})")
 
         # Если есть отделы, используем первый для примеров
-        if departments_list:
-            department_id = departments_list[0].id
+        if departments:
+            department_id = departments[0]['id']
 
             # Получение отдела по ID
-            department_data = client.departments.get(department_id)
-            department_model = Department(**department_data)
-            print(f"\nПолучен отдел: {department_model.title}")
-            print(f"Удален: {department_model.deleted}")
+            department = client.departments.get(department_id)
+            print(f"\nПолучен отдел: {department.get('title')}")
 
     except Exception as e:
         print(f"Ошибка при работе с отделами: {e}")
 
     try:
-        # Создание нового отдела с использованием модели
-        new_department_model = Department(
+        # Создание нового отдела
+        new_department = client.departments.create(
             title="Новый отдел"
         )
+        print(f"Создан новый отдел: {new_department.get('title')} (ID: {new_department.get('id')})")
 
-        # Преобразуем модель в словарь для API запроса
-        new_department_data = new_department_model.dict(by_alias=True, exclude_none=True)
-
-        # Отправляем запрос на создание
-        created_department_data = client.departments.create(**new_department_data)
-
-        # Преобразуем ответ в модель
-        created_department = Department(**created_department_data)
-        print(f"Создан новый отдел: {created_department.title} (ID: {created_department.id})")
-
-        # Обновление отдела с использованием модели
-        created_department.title = "Обновленный отдел"
-        updated_data = created_department.dict(by_alias=True, exclude_none=True)
-
-        updated_department_data = client.departments.update(
-            id=created_department.id,
-            **updated_data
+        # Обновление отдела
+        updated_department = client.departments.update(
+            id=new_department.get('id'),
+            title="Обновленный отдел"
         )
+        print(f"Отдел обновлен: (ID: {updated_department.get('id')})")
 
-        updated_department = Department(**updated_department_data)
-        print(f"Отдел обновлен: {updated_department.title}")
-
-        # Удаление отдела (через обновление поля deleted)
-        updated_department.deleted = True
-        delete_data = updated_department.dict(by_alias=True, exclude_none=True)
-
-        deleted_department_data = client.departments.update(
-            id=updated_department.id,
-            **delete_data
+        # Удаление отдела
+        deleted_department = client.departments.update(
+            id=new_department.get('id'),
+            deleted=True
         )
-
-        deleted_department = Department(**deleted_department_data)
-        print(f"Отдел удален: {deleted_department.title} (Удален: {deleted_department.deleted})")
+        print(f"Отдел удален: (ID: {deleted_department.get('id')})")
 
     except Exception as e:
-        print(f"Ошибка при работе с отделом: {e}")
+        print(f"Ошибка при создании отдела: {e}")
 
 
 def boards_examples(client):
-    """Примеры работы с досками с использованием модели Board."""
+    """Примеры работы с досками."""
     print("\n=== Примеры работы с досками ===")
 
     # Получение списка досок
     try:
         boards_response = client.boards.list(limit=10)
 
-        boards_list = []
         if 'content' in boards_response:
-            # Преобразование словарей в объекты модели Board
-            for board_data in boards_response['content']:
-                board_model = Board(**board_data)
-                boards_list.append(board_model)
+            boards = boards_response['content']
+        else:
+            boards = []
 
-        print(f"Получено досок: {len(boards_list)}")
+        print(f"Получено досок: {len(boards)}")
 
-        # Вывод информации о досках через модель
-        for board in boards_list:
-            print(f"Доска: {board.title} (ID: {board.id}, Проект: {board.project_id})")
+        # Вывод информации о досках
+        for board in boards:
+            print(f"Доска: {board.get('title')} (ID: {board.get('id')})")
 
         # Если есть доски, используем первую для примеров
-        if boards_list:
-            board_id = boards_list[0].id
-            project_id = boards_list[0].project_id
+        if boards:
+            board_id = boards[0]['id']
 
             # Получение доски по ID
-            board_data = client.boards.get(board_id)
-            board_model = Board(**board_data)
-            print(f"\nПолучена доска: {board_model.title}")
-            print(f"Проект: {board_model.project_id}")
-            print(f"Удалена: {board_model.deleted}")
+            board = client.boards.get(board_id)
+            print(f"\nПолучена доска: {board.get('title')}")
 
     except Exception as e:
         print(f"Ошибка при работе с досками: {e}")
 
-    # Создание новой доски с использованием модели
+    # Создание новой доски
     try:
-        # Создаем экземпляр модели
-        new_board_model = Board(
+        new_board = client.boards.create(
             title="Новая тестовая доска",
-            project_id=project_id
+            project_id=board.get('projectId')
         )
+        print(f"Создана новая доска: (ID: {new_board.get('id')})")
 
-        # Преобразуем модель в словарь для API запроса
-        new_board_data = new_board_model.dict(by_alias=True, exclude_none=True)
-
-        # Отправляем запрос на создание
-        created_board_data = client.boards.create(**new_board_data)
-
-        # Преобразуем ответ в модель
-        created_board = Board(**created_board_data)
-        print(f"Создана новая доска: {created_board.title} (ID: {created_board.id})")
-
-        # Обновление доски с использованием модели
-        created_board.title = "Обновленная доска"
-        updated_data = created_board.dict(by_alias=True, exclude_none=True)
-
-        updated_board_data = client.boards.update(
-            id=created_board.id,
-            **updated_data
+        # Обновление доски
+        updated_board = client.boards.update(
+            id=new_board.get('id'),
+            title="Обновленная доска",
+            deleted=False
         )
+        print(f"Доска обновлена: {updated_board}")
 
-        updated_board = Board(**updated_board_data)
-        print(f"Доска обновлена: {updated_board.title}")
-
-        # Удаление доски (через обновление поля deleted)
-        updated_board.deleted = True
-        delete_data = updated_board.dict(by_alias=True, exclude_none=True)
-
-        deleted_board_data = client.boards.update(
-            id=updated_board.id,
-            **delete_data
+        # Удаление доски
+        deleted_borad = client.boards.update(
+            id=new_board.get('id'),
+            deleted=True,
         )
-
-        deleted_board = Board(**deleted_board_data)
-        print(f"Доска удалена: {deleted_board.title} (Удалена: {deleted_board.deleted})")
+        print(f"Доска удалена: {updated_board}")
 
     except Exception as e:
-        print(f"Ошибка при работе с доской: {e}")
+        print(f"Ошибка при создании доски: {e}")
 
 
 def columns_examples(client):
-    """Примеры работы с колонками с использованием модели Column."""
+    """Примеры работы с колонками."""
     print("\n=== Примеры работы с колонками ===")
 
     # Получение списка колонок
@@ -572,419 +450,545 @@ def columns_examples(client):
         # Для получения колонок нужен ID доски
         boards_response = client.boards.list(limit=1)
 
-        boards_list = []
+        boards = []
         if 'content' in boards_response:
-            for board_data in boards_response['content']:
-                board_model = Board(**board_data)
-                boards_list.append(board_model)
+            boards = boards_response['content']
 
-        if boards_list:
-            board_id = boards_list[0].id
-            print(f"Используем доску: {boards_list[0].title} (ID: {board_id})")
+        if boards:
+            board_id = boards[0]['id']
 
             columns_response = client.columns.list(board_id=board_id, limit=10)
 
-            columns_list = []
             if 'content' in columns_response:
-                # Преобразование словарей в объекты модели Column
-                for column_data in columns_response['content']:
-                    column_model = Column(**column_data)
-                    columns_list.append(column_model)
+                columns = columns_response['content']
+            else:
+                columns = []
 
-            print(f"Получено колонок: {len(columns_list)}")
+            print(f"Получено колонок: {len(columns)}")
 
-            # Вывод информации о колонках через модель
-            for column in columns_list:
-                print(f"Колонка: {column.title} (ID: {column.id}, Цвет: {column.color})")
+            # Вывод информации о колонках
+            for column in columns:
+                print(f"Колонка: {column.get('title')} (ID: {column.get('id')})")
 
             # Если есть колонки, используем первую для примеров
-            if columns_list:
-                column_id = columns_list[0].id
+            if columns:
+                column_id = columns[0]['id']
 
                 # Получение колонки по ID
-                column_data = client.columns.get(column_id)
-                column_model = Column(**column_data)
-                print(f"\nПолучена колонка: {column_model.title}")
-                print(f"Цвет: {column_model.color}")
-                print(f"Доска: {column_model.board_id}")
-                print(f"Удалена: {column_model.deleted}")
+                column = client.columns.get(column_id)
+                print(f"\nПолучена колонка: {column.get('title')}")
+
         else:
             print("Нет доступных досок для получения колонок")
 
     except Exception as e:
         print(f"Ошибка при работе с колонками: {e}")
 
-    # Создание новой колонки с использованием модели
+    # Создание новой колонки
     try:
-        # Создаем экземпляр модели
-        new_column_model = Column(
+        new_column = client.columns.create(
             title="Новая колонка",
             color=1,
             board_id=board_id
         )
+        print(f"Создана новая колонка: {new_column})")
 
-        # Преобразуем модель в словарь для API запроса
-        new_column_data = new_column_model.dict(by_alias=True, exclude_none=True)
-
-        # Отправляем запрос на создание
-        created_column_data = client.columns.create(**new_column_data)
-
-        # Преобразуем ответ в модель
-        created_column = Column(**created_column_data)
-        print(f"Создана новая колонка: {created_column.title} (ID: {created_column.id})")
-
-        # Обновление колонки с использованием модели
-        created_column.title = "Обновленная колонка"
-        created_column.color = 2
-        updated_data = created_column.dict(by_alias=True, exclude_none=True)
-
-        updated_column_data = client.columns.update(
-            id=created_column.id,
-            **updated_data
+        # Обновление колонки
+        updated_column = client.columns.update(
+            title="Обновленная колонка",
+            color=16,
+            id=new_column.get('id')
         )
+        print(f"Колонка обновлена: {updated_column}")
 
-        updated_column = Column(**updated_column_data)
-        print(f"Колонка обновлена: {updated_column.title} (Цвет: {updated_column.color})")
-
-        # Удаление колонки (через обновление поля deleted)
-        updated_column.deleted = True
-        delete_data = updated_column.dict(by_alias=True, exclude_none=True)
-
-        deleted_column_data = client.columns.update(
-            id=updated_column.id,
-            **delete_data
+        # Удаление колонки
+        deleted_column = client.columns.update(
+            deleted=True,
+            id=new_column.get('id')
         )
-
-        deleted_column = Column(**deleted_column_data)
-        print(f"Колонка удалена: {deleted_column.title} (Удалена: {deleted_column.deleted})")
+        print(f"Колонка удалена: {deleted_column}")
 
     except Exception as e:
-        print(f"Ошибка при работе с колонкой: {e}")
+        print(f"Ошибка при создании колонки: {e}")
 
 
 def tasks_examples(client):
-    """Примеры работы с задачами с использованием модели Task."""
+    """Примеры работы с задачами."""
     print("\n=== Примеры работы с задачами ===")
 
     # Получение списка задач
     try:
         tasks_response = client.tasks.list(limit=10)
 
-        tasks_list = []
         if 'content' in tasks_response:
-            # Преобразование словарей в объекты модели Task
-            for task_data in tasks_response['content']:
-                task_model = Task(**task_data)
-                tasks_list.append(task_model)
+            tasks = tasks_response['content']
+        else:
+            tasks = []
 
-        print(f"Получено задач: {len(tasks_list)}")
+        print(f"Получено задач: {len(tasks)}")
 
-        # Вывод информации о задачах через модель
-        for task in tasks_list:
-            print(f"Задача: {task.title} (ID: {task.id})")
-            if task.assigned:
-                print(f"  Исполнители: {task.assigned}")
-            if task.deadline:
-                print(f"  Срок: {task.deadline}")
+        # Вывод информации о задачах
+        for task in tasks:
+            print(f"Задача: {task.get('title')} (ID: {task.get('id')})")
 
         # Если есть задачи, используем первую для примеров
-        if tasks_list:
-            task_id = tasks_list[0].id
+        if tasks:
+            task_id = tasks[0]['id']
 
             # Получение задачи по ID
-            task_data = client.tasks.get(task_id)
-            task_model = Task(**task_data)
-            print(f"\nПолучена задача: {task_model.title}")
-            print(f"Описание: {task_model.description}")
-            print(f"Колонка: {task_model.column_id}")
-            print(f"Завершена: {task_model.completed}")
-            print(f"Архивирована: {task_model.archived}")
-            if task_model.stickers:
-                print(f"Стикеры: {task_model.stickers}")
+            task = client.tasks.get(task_id)
+            print(f"\nПолучена задача: {task.get('title')}")
 
     except Exception as e:
         print(f"Ошибка при работе с задачами: {e}")
 
-    # Получение колонки для создания задачи
+    # Создание новой задачи
     try:
-        # Для создания задачи нужен ID колонки
-        boards_response = client.boards.list(limit=1)
+        new_task = client.tasks.create(
+            title="Тестовая задача",
+            column_id="column_id",
+            description="Описание тестовой задачи"
+        )
+        print(f"Создана новая задача: {new_task})")
 
-        if 'content' in boards_response and boards_response['content']:
-            board_id = boards_response['content'][0]['id']
+        # Обновление задачи
+        updated_task = client.tasks.update(
+            id=new_task.get('id'),
+            title="Обновленная задача",
+            color="task-turquoise"
+        )
+        print(f"Задача обновлена: {updated_task}")
 
-            columns_response = client.columns.list(board_id=board_id, limit=1)
-
-            if 'content' in columns_response and columns_response['content']:
-                column_id = columns_response['content'][0]['id']
-
-                # Создание новой задачи с использованием модели
-                new_task_model = Task(
-                    title="Тестовая задача",
-                    column_id=column_id,
-                    description="Описание тестовой задачи",
-                    color="task-turquoise"
-                )
-
-                # Преобразуем модель в словарь для API запроса
-                new_task_data = new_task_model.dict(by_alias=True, exclude_none=True)
-
-                # Отправляем запрос на создание
-                created_task_data = client.tasks.create(**new_task_data)
-
-                # Преобразуем ответ в модель
-                created_task = Task(**created_task_data)
-                print(f"Создана новая задача: {created_task.title} (ID: {created_task.id})")
-
-                # Обновление задачи с использованием модели
-                created_task.title = "Обновленная задача"
-                created_task.description = "Обновленное описание задачи"
-                created_task.color = "task-green"
-                updated_data = created_task.dict(by_alias=True, exclude_none=True)
-
-                updated_task_data = client.tasks.update(
-                    id=created_task.id,
-                    **updated_data
-                )
-
-                updated_task = Task(**updated_task_data)
-                print(f"Задача обновлена: {updated_task.title} (Цвет: {updated_task.color})")
-
-                # Удаление задачи (через обновление поля deleted)
-                updated_task.deleted = True
-                delete_data = updated_task.dict(by_alias=True, exclude_none=True)
-
-                deleted_task_data = client.tasks.update(
-                    id=updated_task.id,
-                    **delete_data
-                )
-
-                deleted_task = Task(**deleted_task_data)
-                print(f"Задача удалена: {deleted_task.title} (Удалена: {deleted_task.deleted})")
-            else:
-                print("Нет доступных колонок для создания задачи")
-        else:
-            print("Нет доступных досок для получения колонок")
+        # Удаление задачи
+        deleted_task = client.tasks.update(
+            id=new_task.get('id'),
+            deleted=True
+        )
+        print(f"Задача удалена: {deleted_task}")
 
     except Exception as e:
-        print(f"Ошибка при работе с задачей: {e}")
+        print(f"Ошибка при создании задачи: {e}")
 
 
 def string_stickers_examples(client):
-    """Примеры работы со строковыми стикерами с использованием модели StringSticker."""
+    """Примеры работы со строковыми стикерами."""
     print("\n=== Примеры работы со строковыми стикерами ===")
 
     # Получение списка строковых стикеров
     try:
         stickers_response = client.string_stickers.list(limit=10)
 
-        stickers_list = []
         if 'content' in stickers_response:
-            # Преобразование словарей в объекты модели StringSticker
-            for sticker_data in stickers_response['content']:
-                sticker_model = StringSticker(**sticker_data)
-                stickers_list.append(sticker_model)
+            stickers = stickers_response['content']
+        else:
+            stickers = []
 
-        print(f"Получено строковых стикеров: {len(stickers_list)}")
+        print(f"Получено строковых стикеров: {len(stickers)}")
 
-        # Вывод информации о стикерах через модель
-        for sticker in stickers_list:
-            print(f"Строковый стикер: {sticker.name} (ID: {sticker.id})")
-            if sticker.states:
-                print(f"  Количество состояний: {len(sticker.states)}")
-            if sticker.icon:
-                print(f"  Иконка: {sticker.icon}")
+        # Вывод информации о стикерах
+        for sticker in stickers:
+            print(f"Строковый стикер: {sticker.get('name')} (ID: {sticker.get('id')})")
 
         # Если есть стикеры, используем первый для примеров
-        if stickers_list:
-            sticker_id = stickers_list[0].id
+        if stickers:
+            sticker_id = stickers[0]['id']
 
             # Получение стикера по ID
-            sticker_data = client.string_stickers.get(sticker_id)
-            sticker_model = StringSticker(**sticker_data)
-            print(f"\nПолучен строковый стикер: {sticker_model.name}")
-            print(f"Иконка: {sticker_model.icon}")
-            if sticker_model.states:
-                print(f"Состояния:")
-                for state in sticker_model.states:
-                    print(f"  - {state.get('name')} (ID: {state.get('id')})")
+            sticker = client.string_stickers.get(sticker_id)
+            print(f"\nПолучен строковый стикер: {sticker.get('name')}")
 
     except Exception as e:
         print(f"Ошибка при работе со строковыми стикерами: {e}")
 
-    # Создание нового строкового стикера с использованием модели
+    # Создание нового стикера
     try:
-        # Создаем экземпляр модели
-        new_sticker_model = StringSticker(
-            name="Новый строковый стикер",
-            icon="icon-flag"
+        new_sticker = client.string_stickers.create(
+            name="Новый строковый стикер"
         )
+        print(f"Создан новый строковый стикер: {new_sticker})")
 
-        # Преобразуем модель в словарь для API запроса
-        new_sticker_data = new_sticker_model.dict(by_alias=True, exclude_none=True)
-
-        # Отправляем запрос на создание
-        created_sticker_data = client.string_stickers.create(**new_sticker_data)
-
-        # Преобразуем ответ в модель
-        created_sticker = StringSticker(**created_sticker_data)
-        print(f"Создан новый строковый стикер: {created_sticker.name} (ID: {created_sticker.id})")
-
-        # Обновление стикера с использованием модели
-        created_sticker.name = "Обновленный строковый стикер"
-        created_sticker.icon = "icon-star"
-        updated_data = created_sticker.dict(by_alias=True, exclude_none=True)
-
-        updated_sticker_data = client.string_stickers.update(
-            id=created_sticker.id,
-            **updated_data
+        # Обновление стикера
+        updated_sticker = client.string_stickers.update(
+            id=new_sticker.get('id'),
+            name="Обновленный строковый стикер"
         )
+        print(f"Строковый стикер обновлен: {updated_sticker}")
 
-        updated_sticker = StringSticker(**updated_sticker_data)
-        print(f"Строковый стикер обновлен: {updated_sticker.name} (Иконка: {updated_sticker.icon})")
-
-        # Удаление стикера (через обновление поля deleted)
-        updated_sticker.deleted = True
-        delete_data = updated_sticker.dict(by_alias=True, exclude_none=True)
-
-        deleted_sticker_data = client.string_stickers.update(
-            id=updated_sticker.id,
-            **delete_data
+        # Удаление стикера
+        deleted_sticker = client.string_stickers.update(
+            id=new_sticker.get('id'),
+            deleted=True
         )
-
-        deleted_sticker = StringSticker(**deleted_sticker_data)
-        print(f"Строковый стикер удален: {deleted_sticker.name} (Удален: {deleted_sticker.deleted})")
+        print(f"Строковый стикер удален: {deleted_sticker}")
 
     except Exception as e:
-        print(f"Ошибка при работе со строковым стикером: {e}")
+        print(f"Ошибка при создании строкового стикера: {e}")
+
+
+def string_sticker_states_examples(client):
+    """Примеры работы с состояниями строковых стикеров."""
+    print("\n=== Примеры работы с состояниями строковых стикеров ===")
+
+    # Получение списка состояний строковых стикеров
+    try:
+        # Для получения состояний нужен ID стикера
+        stickers_response = client.string_stickers.list(limit=1)
+
+        stickers = []
+        if 'content' in stickers_response:
+            stickers = stickers_response['content']
+
+        if stickers:
+            sticker_id = stickers[0]['id']
+            states_response = client.string_sticker_states.list(parent_id=sticker_id, limit=10)
+
+            if 'content' in states_response:
+                states = states_response['content']
+            else:
+                states = []
+
+            print(f"Получено состояний строковых стикеров: {len(states)}")
+
+            # Вывод информации о состояниях
+            for state in states:
+                print(f"Состояние строкового стикера: {state.get('name')} (ID: {state.get('id')})")
+
+            # Если есть состояния, используем первое для примеров
+            if states:
+                state_id = states[0]['id']
+
+                # Получение состояния по ID
+                state = client.string_sticker_states.get(parent_id=sticker_id, id=state_id)
+                print(f"\nПолучено состояние строкового стикера: {state.get('name')}")
+
+                # Обновление состояния (закомментировано, так как изменяет данные)
+                # updated_state = client.string_sticker_states.update(
+                #     parent_id=sticker_id,
+                #     id=state_id,
+                #     name="Обновленное состояние"
+                # )
+                # print(f"Состояние строкового стикера обновлено: {updated_state.get('name')}")
+        else:
+            print("Нет доступных строковых стикеров для получения состояний")
+
+    except Exception as e:
+        print(f"Ошибка при работе с состояниями строковых стикеров: {e}")
+
+    # Создание нового состояния (закомментировано, так как создает реальные данные)
+    # try:
+    #     new_state = client.string_sticker_states.create(
+    #         parent_id="sticker_id_here",
+    #         name="Новое состояние"
+    #     )
+    #     print(f"Создано новое состояние строкового стикера: {new_state.get('name')} (ID: {new_state.get('id')})")
+    # except Exception as e:
+    #     print(f"Ошибка при создании состояния строкового стикера: {e}")
+
+
+def group_chats_examples(client):
+    """Примеры работы с групповыми чатами."""
+    print("\n=== Примеры работы с групповыми чатами ===")
+
+    # Получение списка групповых чатов
+    try:
+        group_chats_response = client.group_chats.list(limit=10)
+
+        if 'content' in group_chats_response:
+            group_chats = group_chats_response['content']
+        elif 'items' in group_chats_response:
+            group_chats = group_chats_response['items']
+        else:
+            group_chats = []
+
+        print(f"Получено групповых чатов: {len(group_chats)}")
+
+        # Вывод информации о групповых чатах
+        for chat in group_chats:
+            print(f"Групповой чат: {chat.get('title')} (ID: {chat.get('id')})")
+
+        # Если есть групповые чаты, используем первый для примеров
+        if group_chats:
+            chat_id = group_chats[0]['id']
+
+            # Получение группового чата по ID
+            chat = client.group_chats.get(chat_id)
+            print(f"\nПолучен групповой чат: {chat.get('title')}")
+
+            # Обновление группового чата (закомментировано, так как изменяет данные)
+            # updated_chat = client.group_chats.update(
+            #     id=chat_id,
+            #     title="Обновленный чат"
+            # )
+            # print(f"Групповой чат обновлен: {updated_chat.get('title')}")
+
+    except Exception as e:
+        print(f"Ошибка при работе с групповыми чатами: {e}")
+
+    # Создание нового группового чата (закомментировано, так как создает реальные данные)
+    # try:
+    #     new_chat = client.group_chats.create(
+    #         title="Новый групповой чат",
+    #         users={"user_id_here": {"role": "admin"}}
+    #     )
+    #     print(f"Создан новый групповой чат: {new_chat.get('title')} (ID: {new_chat.get('id')})")
+    # except Exception as e:
+    #     print(f"Ошибка при создании группового чата: {e}")
+
+
+def chat_messages_examples(client):
+    """Примеры работы с сообщениями чата."""
+    print("\n=== Примеры работы с сообщениями чата ===")
+
+    # Получение списка сообщений чата
+    try:
+        # Для получения сообщений нужен ID чата
+        group_chats_response = client.group_chats.list(limit=1)
+
+        group_chats = []
+        if 'content' in group_chats_response:
+            group_chats = group_chats_response['content']
+        elif 'items' in group_chats_response:
+            group_chats = group_chats_response['items']
+
+        if group_chats:
+            chat_id = group_chats[0]['id']
+
+            messages_response = client.chat_messages.list(parent_id=chat_id, limit=10)
+
+            if 'content' in messages_response:
+                messages = messages_response['content']
+            elif 'items' in messages_response:
+                messages = messages_response['items']
+            else:
+                messages = []
+
+            print(f"Получено сообщений: {len(messages)}")
+
+            # Вывод информации о сообщениях
+            for message in messages:
+                print(f"Сообщение: {message.get('text')} (ID: {message.get('id')})")
+
+            # Если есть сообщения, используем первое для примеров
+            if messages:
+                message_id = messages[0]['id']
+
+                # Получение сообщения по ID
+                message = client.chat_messages.get(parent_id=chat_id, id=message_id)
+                print(f"\nПолучено сообщение: {message.get('text')}")
+
+                # Обновление сообщения (закомментировано, так как изменяет данные)
+                # updated_message = client.chat_messages.update(
+                #     parent_id=chat_id,
+                #     id=message_id,
+                #     text="Обновленное сообщение"
+                # )
+                # print(f"Сообщение обновлено: {updated_message.get('text')}")
+        else:
+            print("Нет доступных групповых чатов для получения сообщений")
+
+    except Exception as e:
+        print(f"Ошибка при работе с сообщениями чата: {e}")
+
+    # Создание нового сообщения (закомментировано, так как создает реальные данные)
+    # try:
+    #     new_message = client.chat_messages.create(
+    #         parent_id="chat_id_here",
+    #         text="Тестовое сообщение",
+    #         text_html="<p>Тестовое сообщение</p>"
+    #     )
+    #     print(f"Создано новое сообщение: {new_message.get('text')} (ID: {new_message.get('id')})")
+    # except Exception as e:
+    #     print(f"Ошибка при создании сообщения: {e}")
 
 
 def sprint_stickers_examples(client):
-    """Примеры работы со стикерами спринта с использованием модели SprintSticker."""
+    """Примеры работы со стикерами спринта."""
     print("\n=== Примеры работы со стикерами спринта ===")
 
     # Получение списка стикеров спринта
     try:
         stickers_response = client.sprint_stickers.list(limit=10)
 
-        stickers_list = []
         if 'content' in stickers_response:
-            # Преобразование словарей в объекты модели SprintSticker
-            for sticker_data in stickers_response['content']:
-                sticker_model = SprintSticker(**sticker_data)
-                stickers_list.append(sticker_model)
+            stickers = stickers_response['content']
         elif 'items' in stickers_response:
-            # Альтернативный формат ответа
-            for sticker_data in stickers_response['items']:
-                sticker_model = SprintSticker(**sticker_data)
-                stickers_list.append(sticker_model)
+            stickers = stickers_response['items']
+        else:
+            stickers = []
 
-        print(f"Получено стикеров спринта: {len(stickers_list)}")
+        print(f"Получено стикеров спринта: {len(stickers)}")
 
-        # Вывод информации о стикерах через модель
-        for sticker in stickers_list:
-            print(f"Стикер спринта: {sticker.name} (ID: {sticker.id})")
-            if sticker.states:
-                print(f"  Количество состояний: {len(sticker.states)}")
+        # Вывод информации о стикерах
+        for sticker in stickers:
+            print(f"Стикер спринта: {sticker.get('name')} (ID: {sticker.get('id')})")
 
         # Если есть стикеры, используем первый для примеров
-        if stickers_list:
-            sticker_id = stickers_list[0].id
+        if stickers:
+            sticker_id = stickers[0]['id']
 
             # Получение стикера по ID
-            sticker_data = client.sprint_stickers.get(sticker_id)
-            sticker_model = SprintSticker(**sticker_data)
-            print(f"\nПолучен стикер спринта: {sticker_model.name}")
-            if sticker_model.states:
-                print(f"Состояния:")
-                for state in sticker_model.states:
-                    print(f"  - {state.get('name')} (ID: {state.get('id')})")
+            sticker = client.sprint_stickers.get(sticker_id)
+            print(f"\nПолучен стикер спринта: {sticker.get('name')}")
+
+            # Обновление стикера (закомментировано, так как изменяет данные)
+            # updated_sticker = client.sprint_stickers.update(
+            #     id=sticker_id,
+            #     name="Обновленный стикер"
+            # )
+            # print(f"Стикер спринта обновлен: {updated_sticker.get('name')}")
 
     except Exception as e:
         print(f"Ошибка при работе со стикерами спринта: {e}")
 
-    # Создание нового стикера спринта с использованием модели
+    # Создание нового стикера (закомментировано, так как создает реальные данные)
+    # try:
+    #     new_sticker = client.sprint_stickers.create(
+    #         name="Новый стикер спринта",
+    #         color="#FF5733"
+    #     )
+    #     print(f"Создан новый стикер спринта: {new_sticker.get('name')} (ID: {new_sticker.get('id')})")
+    # except Exception as e:
+    #     print(f"Ошибка при создании стикера спринта: {e}")
+
+
+def sprint_sticker_states_examples(client):
+    """Примеры работы с состояниями стикеров спринта."""
+    print("\n=== Примеры работы с состояниями стикеров спринта ===")
+
+    # Получение списка состояний стикеров спринта
     try:
-        # Создаем экземпляр модели с минимальными необходимыми состояниями
-        new_sticker_model = SprintSticker(
-            name="Новый стикер спринта",
-            states=[
-                {"name": "Состояние 1", "color": "#FF5733"},
-                {"name": "Состояние 2", "color": "#33FF57"}
-            ]
-        )
+        # Для получения состояний нужен ID стикера
+        stickers_response = client.sprint_stickers.list(limit=1)
 
-        # Преобразуем модель в словарь для API запроса
-        new_sticker_data = new_sticker_model.dict(by_alias=True, exclude_none=True)
+        stickers = []
+        if 'content' in stickers_response:
+            stickers = stickers_response['content']
+        elif 'items' in stickers_response:
+            stickers = stickers_response['items']
 
-        # Отправляем запрос на создание
-        created_sticker_data = client.sprint_stickers.create(**new_sticker_data)
+        if stickers:
+            sticker_id = stickers[0]['id']
 
-        # Преобразуем ответ в модель
-        created_sticker = SprintSticker(**created_sticker_data)
-        print(f"Создан новый стикер спринта: {created_sticker.name} (ID: {created_sticker.id})")
-        print(f"Созданные состояния:")
-        for state in created_sticker.states:
-            print(f"  - {state.get('name')} (ID: {state.get('id')})")
+            states_response = client.sprint_sticker_states.list(parent_id=sticker_id, limit=10)
 
-        # Обновление стикера с использованием модели
-        created_sticker.name = "Обновленный стикер спринта"
-        updated_data = created_sticker.dict(by_alias=True, exclude_none=True)
+            if 'content' in states_response:
+                states = states_response['content']
+            elif 'items' in states_response:
+                states = states_response['items']
+            else:
+                states = []
 
-        updated_sticker_data = client.sprint_stickers.update(
-            id=created_sticker.id,
-            **updated_data
-        )
+            print(f"Получено состояний стикеров: {len(states)}")
 
-        updated_sticker = SprintSticker(**updated_sticker_data)
-        print(f"Стикер спринта обновлен: {updated_sticker.name}")
+            # Вывод информации о состояниях
+            for state in states:
+                print(f"Состояние стикера: {state.get('name')} (ID: {state.get('id')})")
 
-        # Удаление стикера (через обновление поля deleted)
-        updated_sticker.deleted = True
-        delete_data = updated_sticker.dict(by_alias=True, exclude_none=True)
+            # Если есть состояния, используем первое для примеров
+            if states:
+                state_id = states[0]['id']
 
-        deleted_sticker_data = client.sprint_stickers.update(
-            id=updated_sticker.id,
-            **delete_data
-        )
+                # Получение состояния по ID
+                state = client.sprint_sticker_states.get(parent_id=sticker_id, id=state_id)
+                print(f"\nПолучено состояние стикера: {state.get('name')}")
 
-        deleted_sticker = SprintSticker(**deleted_sticker_data)
-        print(f"Стикер спринта удален: {deleted_sticker.name} (Удален: {deleted_sticker.deleted})")
+                # Обновление состояния (закомментировано, так как изменяет данные)
+                # updated_state = client.sprint_sticker_states.update(
+                #     parent_id=sticker_id,
+                #     id=state_id,
+                #     name="Обновленное состояние"
+                # )
+                # print(f"Состояние стикера обновлено: {updated_state.get('name')}")
+        else:
+            print("Нет доступных стикеров спринта для получения состояний")
 
     except Exception as e:
-        print(f"Ошибка при работе со стикером спринта: {e}")
+        print(f"Ошибка при работе с состояниями стикеров спринта: {e}")
+
+    # Создание нового состояния (закомментировано, так как создает реальные данные)
+    # try:
+    #     new_state = client.sprint_sticker_states.create(
+    #         parent_id="sticker_id_here",
+    #         name="Новое состояние"
+    #     )
+    #     print(f"Создано новое состояние стикера: {new_state.get('name')} (ID: {new_state.get('id')})")
+    # except Exception as e:
+    #     print(f"Ошибка при создании состояния стикера: {e}")
 
 
-if __name__ == "__main__":
+def webhooks_examples(client):
+    """Примеры работы с вебхуками."""
+    print("\n=== Примеры работы с вебхуками ===")
+
+    # Получение списка вебхуков
+    try:
+        webhooks_response = client.webhooks.list(limit=10)
+
+        if 'content' in webhooks_response:
+            webhooks = webhooks_response['content']
+        elif 'items' in webhooks_response:
+            webhooks = webhooks_response['items']
+        else:
+            webhooks = []
+
+        print(f"Получено вебхуков: {len(webhooks)}")
+
+        # Вывод информации о вебхуках
+        for webhook in webhooks:
+            print(f"Вебхук: {webhook.get('url')} (ID: {webhook.get('id')})")
+
+        # Если есть вебхуки, используем первый для примеров
+        if webhooks:
+            webhook_id = webhooks[0]['id']
+
+            # Получение вебхука по ID
+            webhook = client.webhooks.get(webhook_id)
+            print(f"\nПолучен вебхук: {webhook.get('url')}")
+
+            # Обновление вебхука (закомментировано, так как изменяет данные)
+            # updated_webhook = client.webhooks.update(
+            #     id=webhook_id,
+            #     url="https://example.com/updated-webhook"
+            # )
+            # print(f"Вебхук обновлен: {updated_webhook.get('url')}")
+
+    except Exception as e:
+        print(f"Ошибка при работе с вебхуками: {e}")
+
+    # Создание нового вебхука (закомментировано, так как создает реальные данные)
+    # try:
+    #     new_webhook = client.webhooks.create(
+    #         url="https://example.com/webhook",
+    #         events=["task.created", "task.updated"]
+    #     )
+    #     print(f"Создан новый вебхук: {new_webhook.get('url')} (ID: {new_webhook.get('id')})")
+    # except Exception as e:
+    #     print(f"Ошибка при создании вебхука: {e}")
+
+
+def main():
+    """Основная функция для запуска примеров."""
     # Создание клиента
     client = YouGileClient()
 
-    # Примеры аутентификации
+    # Запуск примеров
     auth_examples(client)
-
-    # Примеры работы с сотрудниками
-    employees_examples(client)
-    #
-    # # Примеры работы с проектами
+    # employees_examples(client)
     # projects_examples(client)
-    #
-    # # Примеры работы с ролями проекта
     # project_roles_examples(client)
-    #
-    # # Примеры работы с отделами
     # departments_examples(client)
-    #
-    # # Примеры работы с досками
     # boards_examples(client)
-    #
-    # # Примеры работы с колонками
     # columns_examples(client)
-    #
-    # # Примеры работы с задачами
     # tasks_examples(client)
-    #
-    # # Примеры работы со строковыми стикерами
     # string_stickers_examples(client)
-    #
-    # # Примеры работы со стикерами спринта
+    # string_sticker_states_examples(client)
     # sprint_stickers_examples(client)
+
+    #sprint_sticker_states_examples(client)
+    #group_chats_examples(client)
+    #chat_messages_examples(client)
+    #webhooks_examples(client)
+
+
+if __name__ == "__main__":
+    main()
