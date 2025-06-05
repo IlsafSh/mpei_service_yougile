@@ -767,9 +767,11 @@ class MPEIRuzParser:
                         return False
 
                     # Проверяем номер недели после перехода
-                    week = self._get_current_week_number()
-                    if week is None:
+                    if self._get_current_week_number() is None:
                         self.logger.warning("Не удалось определить номер недели после перехода")
+                        week += 1
+                    else:
+                        week = self._get_current_week_number()
 
                     self.logger.debug(f"Текущая неделя после перехода: {week}")
                     attempts += 1
@@ -782,9 +784,11 @@ class MPEIRuzParser:
                         return False
 
                     # Проверяем номер недели после перехода
-                    week = self._get_current_week_number()
-                    if week is None:
+                    if self._get_current_week_number() is None:
                         self.logger.warning("Не удалось определить номер недели после перехода")
+                        week -= 1
+                    else:
+                        week = self._get_current_week_number()
 
                     self.logger.debug(f"Текущая неделя после перехода: {week}")
                     attempts += 1
