@@ -59,7 +59,7 @@ class MPEIRuzParser:
         "преп.", "преподаватель"
     ]
 
-    def __init__(self, headless=True, max_weeks=16, cleanup_files=True):
+    def __init__(self, headless=True, max_weeks=18, cleanup_files=True):
         """
         Инициализация парсера.
 
@@ -108,7 +108,7 @@ class MPEIRuzParser:
         while True:
             # Проверяем наличие маркеров корневой директории проекта
             if os.path.exists(os.path.join(current_dir, "main.py")) or \
-               os.path.exists(os.path.join(current_dir, "requirements.txt")):
+                    os.path.exists(os.path.join(current_dir, "requirements.txt")):
                 return current_dir
 
             # Переходим на уровень выше
@@ -188,20 +188,42 @@ class MPEIRuzParser:
             # Создаем список для хранения всего расписания
             all_schedule = []
 
-            # Находим нулевую учебную неделю
-            if not self._find_zero_week():
-                self.logger.warning("Не удалось найти нулевую учебную неделю, используем текущую неделю")
-
             # Получаем номер текущей недели
             current_week_number = self._get_current_week_number()
-            if current_week_number is None:
-                self.logger.error("Не удалось определить номер текущей недели")
-                return []
 
+            # Поиск ближайшей недели с загруженным (непустым) расписанием если текущая неделя пуста
+            if current_week_number is None:
+                self.logger.warning("Не удалось определить номер текущей недели, поиск...")
+                attempts = 0
+                while current_week_number is None and attempts < 2:
+                    if not self._go_to_next_week():
+                        self.logger.warning(f"Не удалось перейти к следующей неделе при определении номера недели")
+                    current_week_number = self._get_current_week_number()
+                    attempts += 1
+
+                while current_week_number is None and attempts > -2:
+                    if not self._go_to_prev_week():
+                        self.logger.warning(f"Не удалось перейти к предыдущей неделе при определении номера недели")
+                    current_week_number = self._get_current_week_number()
+                    attempts -= 1
+
+                if current_week_number is not None:
+                    self.logger.info(f"Текущая неделя после поиска: {current_week_number}")
+                else:
+                    raise Exception
+
+            # Находим первую учебную неделю для получения полного расписания
+            if not self._find_first_week():
+                self.logger.warning("Не удалось найти первую учебную неделю, используем текущую неделю")
+
+            current_week_number = self._get_current_week_number()
             self.logger.info(f"Текущая неделя: {current_week_number}")
 
-            # Парсим последовательно каждую неделю от текущей до max_weeks
-            for week in range(current_week_number, self.max_weeks + 1):
+            # Парсим последовательно каждую неделю от нулевой до max_weeks
+            start_week = 0 if self._go_to_prev_week() else current_week_number
+            self.logger.info(f"Начинаем парсинг с недели {start_week} до {self.max_weeks}")
+
+            for week in range(start_week, self.max_weeks + 1):
                 self.logger.info(f"Парсинг недели {week}")
 
                 # Парсим текущую неделю
@@ -685,7 +707,20 @@ class MPEIRuzParser:
             except TimeoutException:
                 self.logger.error("Таймаут при ожидании загрузки расписания")
                 self._save_diagnostic_screenshot("timeout_load_schedule.png")
-                return False
+
+                # Проверяем наличие сообщения об ошибке "Не найдена учебная группа"
+                page_source = self.driver.page_source
+                soup = BeautifulSoup(page_source, 'html.parser')
+                error_div = soup.select_one('div.validation-summary-errors')
+
+                if error_div and 'Не найдена учебная группа' in error_div.text:
+                    self.logger.error(f"Обнаружено сообщение об ошибке: {error_div.text.strip()}")
+                    return False
+                else:
+                    # Если сообщения об ошибке нет, возможно расписание есть на других неделях
+                    self.logger.warning(
+                        "Таймаут загрузки расписания, но сообщение об ошибке не найдено. Продолжаем парсинг для других недель.")
+                    return True
 
         except Exception as e:
             self.logger.error(f"Ошибка при выборе объекта {name}: {e}", exc_info=True)
@@ -693,113 +728,78 @@ class MPEIRuzParser:
             self._save_diagnostic_screenshot("error_select_object.png")
             return False
 
-    def _find_zero_week(self):
+    def _find_first_week(self):
         """
-        Поиск нулевой учебной недели.
+        Поиск первой учебной недели.
 
         Returns:
-            bool: True, если нулевая неделя найдена, иначе False
+            bool: True, если первая неделя найдена, иначе False
         """
         try:
-            self.logger.info("Ищем нулевую учебную неделю")
+            self.logger.info("Ищем первую учебную неделю")
 
             # Получаем номер текущей недели
             current_week = self._get_current_week_number()
             if current_week is None:
-                # Проверяем, не находимся ли мы уже на нулевой неделе с пустым заголовком
-                if self._check_zero_week_by_empty_header():
-                    self.logger.info("Обнаружена нулевая неделя с пустым заголовком")
-                    return True
                 self.logger.error("Не удалось определить номер текущей недели")
                 return False
+            else:
+                week = current_week
 
-            self.logger.info(f"Текущая неделя: {current_week}")
+            self.logger.info(f"Текущая неделя: {week}")
 
-            # Если уже на нулевой неделе, возвращаем True
-            if current_week == 0:
-                self.logger.info("Уже находимся на нулевой неделе")
+            # Если уже на первой неделе, возвращаем True
+            if week == 1:
+                self.logger.info("Уже находимся на первой неделе")
                 return True
 
-            # Переходим к предыдущим неделям, пока не найдем нулевую
+            # Если мы на нулевой неделе или на неделе с номером больше 1,
+            # переходим к соответствующей неделе
             attempts = 0
             max_attempts = 20  # Ограничиваем количество попыток
 
-            while current_week > 0 and attempts < max_attempts:
-                if not self._go_to_prev_week():
-                    self.logger.warning("Не удалось перейти к предыдущей неделе")
-                    return False
+            if week < 1:
+                # Если мы на нулевой неделе, переходим вперед
+                while week < 1 and attempts < max_attempts:
+                    self.logger.debug(f"Переходим к следующей неделе (попытка {attempts + 1})")
+                    if not self._go_to_next_week():
+                        self.logger.warning("Не удалось перейти к следующей неделе")
+                        return False
 
-                # Проверяем, не находимся ли мы на нулевой неделе с пустым заголовком
-                if self._check_zero_week_by_empty_header():
-                    self.logger.info("Обнаружена нулевая неделя с пустым заголовком")
-                    return True
+                    # Проверяем номер недели после перехода
+                    week = self._get_current_week_number()
+                    if week is None:
+                        self.logger.warning("Не удалось определить номер недели после перехода")
 
-                current_week = self._get_current_week_number()
-                if current_week is None:
-                    # Если не удалось определить номер недели, проверяем, не нулевая ли это неделя
-                    if self._check_zero_week_by_empty_header():
-                        self.logger.info("Обнаружена нулевая неделя с пустым заголовком")
-                        return True
-                    self.logger.error("Не удалось определить номер недели после перехода")
-                    return False
+                    self.logger.debug(f"Текущая неделя после перехода: {week}")
+                    attempts += 1
+            else:
+                # Если мы на неделе с номером больше 1, переходим назад
+                while week > 1 and attempts < max_attempts:
+                    self.logger.debug(f"Переходим к предыдущей неделе (попытка {attempts + 1})")
+                    if not self._go_to_prev_week():
+                        self.logger.warning("Не удалось перейти к предыдущей неделе")
+                        return False
 
-                self.logger.info(f"Текущая неделя после перехода: {current_week}")
-                attempts += 1
+                    # Проверяем номер недели после перехода
+                    week = self._get_current_week_number()
+                    if week is None:
+                        self.logger.warning("Не удалось определить номер недели после перехода")
 
-                if current_week == 0:
-                    self.logger.info("Нулевая неделя найдена")
-                    return True
+                    self.logger.debug(f"Текущая неделя после перехода: {week}")
+                    attempts += 1
 
-            self.logger.warning(f"Не удалось найти нулевую неделю после {attempts} попыток")
-            return False
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при поиске нулевой недели: {e}", exc_info=True)
-            self._save_diagnostic_screenshot("error_find_zero_week.png")
-            return False
-
-    def _check_zero_week_by_empty_header(self):
-        """
-        Проверка, является ли текущая неделя нулевой по пустому заголовку.
-
-        Returns:
-            bool: True, если это нулевая неделя с пустым заголовком, иначе False
-        """
-        try:
-            # Находим заголовок с номером недели
-            week_headers = self.driver.find_elements(By.XPATH,
-                                                     "//td[@class='th-primary' and contains(@style, 'min-width: 55px')]")
-
-            if not week_headers:
-                self.logger.warning("Не найден заголовок с номером недели")
+            # Проверяем, что мы действительно нашли первую неделю
+            if week == 1:
+                self.logger.info("Первая неделя найдена")
+                return True
+            else:
+                self.logger.warning(f"Не удалось найти первую неделю за {max_attempts} попыток")
                 return False
 
-            # Проверяем, пустой ли текст заголовка
-            week_header = week_headers[0]
-            week_text = week_header.text.strip()
-
-            # Если текст пустой или содержит только пробельные символы, это может быть нулевая неделя
-            if not week_text:
-                self.logger.info("Обнаружен пустой заголовок недели, вероятно это нулевая неделя")
-
-                # Дополнительная проверка: пытаемся перейти к предыдущей неделе
-                # Если кнопка "Предыдущая" неактивна, то это подтверждает, что мы на нулевой неделе
-                try:
-                    prev_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Предыдущая')]")
-                    if not prev_button.is_enabled():
-                        self.logger.info("Кнопка 'Предыдущая' неактивна, подтверждена нулевая неделя")
-                        return True
-                except:
-                    # Если кнопка не найдена или возникла ошибка, предполагаем, что это нулевая неделя
-                    self.logger.info("Не удалось найти кнопку 'Предыдущая', предполагаем нулевую неделю")
-                    return True
-
-                return True
-
-            return False
-
         except Exception as e:
-            self.logger.error(f"Ошибка при проверке нулевой недели по пустому заголовку: {e}", exc_info=True)
+            self.logger.error(f"Ошибка при поиске первой недели: {e}", exc_info=True)
+            self._save_diagnostic_screenshot("error_find_first_week.png")
             return False
 
     def _get_current_week_number(self):
@@ -937,13 +937,14 @@ class MPEIRuzParser:
             # Проверяем наличие таблицы расписания с увеличенным таймаутом
             try:
                 self.logger.debug("Ожидаем появления таблицы расписания...")
-                table = WebDriverWait(self.driver, 15).until(
+                table = WebDriverWait(self.driver, 5).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, "table.table"))
                 )
                 self.logger.debug(f"Таблица найдена: {table.tag_name}")
             except TimeoutException:
-                self.logger.error("Таблица расписания не найдена после ожидания")
-                return []
+                self.logger.info(
+                    f"Таблица расписания не найдена для недели {week_number}. Возможно, для этой недели нет расписания.")
+                return []  # Возвращаем пустой список, так как расписание отсутствует
 
             # Получаем все строки таблицы
             rows = table.find_elements(By.TAG_NAME, "tr")
@@ -1012,13 +1013,47 @@ class MPEIRuzParser:
                             # Используем BeautifulSoup для парсинга HTML
                             soup = BeautifulSoup(lesson_html, 'html.parser')
 
-                            # Извлекаем название предмета из тега strong
-                            subject_elem = soup.find('strong')
-                            if subject_elem:
-                                subject = subject_elem.text.strip()
+                            # Извлекаем название предмета из второго тега strong (первый содержит время)
+                            strong_elements = soup.find_all('strong')
+                            if len(strong_elements) >= 2:
+                                # Берем второй тег strong, который содержит название предмета
+                                subject = strong_elements[1].text.strip()
+                                self.logger.debug(f"Название предмета из второго тега strong: {subject}")
+                            elif len(strong_elements) == 1:
+                                # Если найден только один тег strong, проверяем, не время ли это
+                                subject_text = strong_elements[0].text.strip()
+                                # Проверяем, похоже ли это на время (содержит "-" и цифры)
+                                if ":" in subject_text and any(c.isdigit() for c in subject_text):
+                                    # Это время, пытаемся найти название предмета в тексте
+                                    lines = lesson_text.split('\n')
+                                    # Ищем первую непустую строку после времени
+                                    for line in lines:
+                                        line = line.strip()
+                                        if line and not ("-" in line and any(c.isdigit() for c in line)):
+                                            subject = line
+                                            self.logger.debug(f"Название предмета из текста: {subject}")
+                                            break
+                                    else:
+                                        subject = lesson_text.split('\n')[0] if '\n' in lesson_text else lesson_text
+                                else:
+                                    # Это не время, значит это название предмета
+                                    subject = subject_text
+                                    self.logger.debug(f"Название предмета из единственного тега strong: {subject}")
                             else:
                                 # Если тег strong не найден, пытаемся извлечь название из текста
-                                subject = lesson_text.split('\n')[0] if '\n' in lesson_text else lesson_text
+                                lines = lesson_text.split('\n')
+                                # Пропускаем первую строку, если она похожа на время
+                                start_idx = 0
+                                if lines and "-" in lines[0] and any(c.isdigit() for c in lines[0]):
+                                    start_idx = 1
+                                # Берем первую непустую строку после времени
+                                for i in range(start_idx, len(lines)):
+                                    if lines[i].strip():
+                                        subject = lines[i].strip()
+                                        self.logger.debug(f"Название предмета из текста (без strong): {subject}")
+                                        break
+                                else:
+                                    subject = lesson_text.split('\n')[0] if '\n' in lesson_text else lesson_text
 
                             # Извлекаем тип занятия из текста между тегом strong и первой ссылкой
                             lesson_type = self._extract_lesson_type_from_html(soup)
