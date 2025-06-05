@@ -301,27 +301,79 @@ class MPEIRuzParser:
                 self.logger.error(f"Неверный формат даты: {e}", exc_info=True)
                 return []
 
-            # Получаем полное расписание
-            all_schedule = self.parse(name, schedule_type, save_to_file=False)
-
-            if not all_schedule:
-                self.logger.error("Не удалось получить расписание")
+            # Открываем страницу расписания
+            if not self._open_page():
+                self.logger.error("Не удалось открыть страницу расписания")
                 return []
 
-            # Фильтруем расписание по указанному диапазону дат
-            filtered_schedule = []
+            # Выбираем тип расписания и объект
+            if not self._select_schedule_type(schedule_type):
+                self.logger.error(f"Не удалось выбрать тип расписания: {schedule_type}")
+                return []
 
-            for day in all_schedule:
-                # Извлекаем дату из заголовка дня
-                try:
-                    # Формат заголовка может быть разным, пробуем разные варианты
+            if not self._select_schedule_object(name, schedule_type):
+                self.logger.error(f"Не удалось выбрать объект: {name}")
+                return []
+
+            # Создаем список для хранения всего расписания
+            all_schedule = []
+
+            # Устанавливаем начальную дату в поле ввода
+            self.logger.info(f"Устанавливаем начальную дату: {start_date}")
+            try:
+                # Находим поле ввода начальной даты
+                start_date_input = self.wait.until(
+                    EC.element_to_be_clickable((By.ID, "startDate"))
+                )
+
+                # Очищаем поле и вводим новую дату
+                start_date_input.clear()
+                start_date_input.send_keys(start_date)
+
+                # Нажимаем кнопку "Просмотр"
+                view_button = self.wait.until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(@onclick, 'toCustomDate(1)')]"))
+                )
+                view_button.click()
+
+                # Ожидаем загрузки расписания
+                time.sleep(3)
+                self.logger.info("Расписание для начальной даты загружено")
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при установке начальной даты: {e}", exc_info=True)
+                self._save_diagnostic_screenshot("error_set_start_date.png")
+                return []
+
+            # Словарь для хранения дат дней недели
+            week_dates = {}
+
+            # Парсим расписание по неделям до достижения конечной даты
+            while True:
+                # Получаем номер текущей недели для информации
+                current_week = self._get_current_week_number()
+                self.logger.info(f"Парсинг недели {current_week}")
+
+                # Парсим текущую неделю с помощью существующего метода
+                week_schedule = self._parse_week_schedule(current_week, schedule_type, name)
+
+                if not week_schedule:
+                    self.logger.warning(f"Не удалось получить расписание для недели {current_week}")
+                    # Если не удалось получить расписание, пробуем перейти к следующей неделе
+                    if not self._go_to_next_week():
+                        self.logger.warning("Не удалось перейти к следующей неделе, завершаем парсинг")
+                        break
+                    continue
+
+                # Определяем даты дней недели
+                for day in week_schedule:
                     day_text = day["day"]
-
-                    # Вариант 1: "Пн, 07 апреля"
-                    date_match = re.search(r'(\d{1,2})\s+(\w+)', day_text)
+                    # Извлекаем дату из заголовка дня (например, "Пн, 07 мая")
+                    date_match = re.search(r'(\w+),\s+(\d{1,2})\s+(\w+)', day_text)
                     if date_match:
-                        day_num = int(date_match.group(1))
-                        month_name = date_match.group(2).lower()
+                        day_of_week = date_match.group(1)
+                        day_num = int(date_match.group(2))
+                        month_name = date_match.group(3).lower()
 
                         # Словарь соответствия названий месяцев их номерам
                         month_map = {
@@ -332,32 +384,102 @@ class MPEIRuzParser:
 
                         if month_name in month_map:
                             month_num = month_map[month_name]
-                            # Предполагаем текущий год, если не указан
-                            year = datetime.now().year
+                            # Определяем год (предполагаем текущий год, если не указан)
+                            year = start_date_obj.year
 
                             # Создаем объект даты
                             day_date = datetime(year, month_num, day_num)
 
-                            # Если дата в указанном диапазоне, добавляем день в отфильтрованное расписание
-                            if start_date_obj <= day_date <= end_date_obj:
-                                filtered_schedule.append(day)
+                            # Если месяц в дате меньше месяца начальной даты и разница больше 6 месяцев,
+                            # то это следующий год
+                            if month_num < start_date_obj.month and start_date_obj.month - month_num > 6:
+                                day_date = datetime(year + 1, month_num, day_num)
+                            # Если месяц в дате больше месяца начальной даты и разница больше 6 месяцев,
+                            # то это предыдущий год
+                            elif month_num > start_date_obj.month and month_num - start_date_obj.month > 6:
+                                day_date = datetime(year - 1, month_num, day_num)
+
+                            # Сохраняем дату для этого дня
+                            week_dates[day_text] = day_date
+
+                            # Добавляем дату в информацию о дне
+                            day["date"] = day_date.strftime('%d.%m.%Y')
+                        else:
+                            self.logger.warning(f"Неизвестное название месяца: {month_name}")
                     else:
                         self.logger.warning(f"Не удалось извлечь дату из заголовка дня: {day_text}")
 
-                except Exception as e:
-                    self.logger.error(f"Ошибка при обработке даты дня: {e}", exc_info=True)
+                # Фильтруем дни по диапазону дат
+                filtered_days = []
+                for day in week_schedule:
+                    day_text = day["day"]
+                    if day_text in week_dates:
+                        day_date = week_dates[day_text]
 
-            self.logger.info(f"Отфильтровано расписание на {len(filtered_schedule)} дней в указанном диапазоне")
+                        # Пропускаем дни до начальной даты
+                        if day_date < start_date_obj:
+                            self.logger.debug(
+                                f"Пропускаем день {day_date.strftime('%d.%m.%Y')}, так как он раньше начальной даты")
+                            continue
 
-            # Сохраняем отфильтрованное расписание в JSON
-            if save_to_file and filtered_schedule:
+                        # Пропускаем дни после конечной даты
+                        if day_date > end_date_obj:
+                            self.logger.debug(
+                                f"Пропускаем день {day_date.strftime('%d.%m.%Y')}, так как он позже конечной даты")
+                            continue
+
+                        # День в диапазоне дат, добавляем его в отфильтрованное расписание
+                        filtered_days.append(day)
+
+                # Добавляем отфильтрованные дни в общее расписание
+                all_schedule.extend(filtered_days)
+
+                # Проверяем, нужно ли переходить к следующей неделе
+                need_next_week = False
+
+                # Если есть даты дней недели, проверяем, достигли ли мы конечной даты
+                if week_dates:
+                    # Находим последний день недели
+                    last_day_date = max(week_dates.values())
+
+                    # Если последний день недели раньше конечной даты, переходим к следующей неделе
+                    if last_day_date < end_date_obj:
+                        need_next_week = True
+                else:
+                    # Если не удалось определить даты, переходим к следующей неделе
+                    need_next_week = True
+
+                # Если нужно перейти к следующей неделе
+                if need_next_week:
+                    self.logger.info("Переходим к следующей неделе")
+                    if not self._go_to_next_week():
+                        self.logger.warning("Не удалось перейти к следующей неделе, завершаем парсинг")
+                        break
+
+                    # Очищаем словарь дат для новой недели
+                    week_dates = {}
+                else:
+                    # Достигли конечной даты, завершаем парсинг
+                    self.logger.info("Достигнута конечная дата, завершаем парсинг")
+                    break
+
+            # Проверяем, что расписание не пустое
+            if not all_schedule:
+                self.logger.warning("Внимание: расписание пустое. Возможно, проблема с извлечением данных.")
+                return []
+
+            # Выводим информацию о полученном расписании
+            self.logger.info(f"Получено расписание на {len(all_schedule)} дней в указанном диапазоне")
+
+            # Сохраняем расписание в JSON
+            if save_to_file and all_schedule:
                 if not filename:
                     # Генерируем имя файла на основе типа расписания, названия объекта и диапазона дат
                     filename = f"schedule_{schedule_type}_{name.replace(' ', '_')}_{start_date.replace('.', '_')}-{end_date.replace('.', '_')}.json"
 
-                self._save_schedule_to_json(filtered_schedule, filename)
+                self._save_schedule_to_json(all_schedule, filename)
 
-            return filtered_schedule
+            return all_schedule
 
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге расписания за период: {e}", exc_info=True)
@@ -581,77 +703,54 @@ class MPEIRuzParser:
                 self.logger.error("Имя объекта не может быть пустым")
                 return False
 
-            # Метод 1: Использование select2
+            # Метод 1: Установка значения через JavaScript
             try:
-                self.logger.debug("Метод 1: Использование select2")
+                # Определяем ID селекта в зависимости от типа расписания
+                select_id = "ddlReciever"
 
-                # Находим поле ввода select2
-                select2_input = self.wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, ".select2-search__field"))
-                )
+                # Устанавливаем значение через JavaScript
+                script = f"""
+                var select = document.querySelector('#ddlReciever');
+                if (select) {{
+                    // Создаем новую опцию
+                    var option = new Option('{name}', '{name}', true, true);
+                    // Добавляем опцию в селект
+                    select.appendChild(option);
+                    // Обновляем select2
+                    $(select).trigger('change');
+                    return true;
+                }}
+                return false;
+                """
+                result = self.driver.execute_script(script)
+                if not result:
+                    self.logger.warning("Не удалось установить значение через JavaScript")
+                    return False
 
-                # Очищаем поле и вводим название объекта
-                select2_input.clear()
-                select2_input.send_keys(name)
-                time.sleep(1)
-
-                # Нажимаем Enter для выбора первого совпадения
-                select2_input.send_keys(Keys.ENTER)
+                self.logger.info("Значение установлено через JavaScript")
                 time.sleep(2)
 
                 # Сохраняем скриншот после выбора объекта
-                self._save_diagnostic_screenshot("after_select_object_method1.png")
-
-                self.logger.info("Объект выбран через select2")
+                self._save_diagnostic_screenshot("after_select_object_method.png")
 
             except Exception as e:
                 self.logger.warning(f"Метод 1 не сработал: {e}")
-                self.logger.debug("Пробуем метод 2: Установка значения через JavaScript")
+                self.logger.debug("Пробуем метод 2: Прямой ввод в поле без использования select2")
 
-                # Метод 2: Установка значения через JavaScript
+                # Метод 2: Прямой ввод в поле без использования select2
                 try:
-                    # Определяем ID селекта в зависимости от типа расписания
-                    select_id = "ddlReciever"
-
-                    # Устанавливаем значение через JavaScript
-                    script = f"""
-                    var select = document.querySelector('#ddlReciever');
-                    if (select) {{
-                        // Создаем новую опцию
-                        var option = new Option('{name}', '{name}', true, true);
-                        // Добавляем опцию в селект
-                        select.appendChild(option);
-                        // Обновляем select2
-                        $(select).trigger('change');
-                        return true;
-                    }}
-                    return false;
-                    """
-                    result = self.driver.execute_script(script)
-                    if not result:
-                        self.logger.warning("Не удалось установить значение через JavaScript")
-                        return False
-
-                    self.logger.info("Значение установлено через JavaScript")
+                    # Ищем любое доступное поле ввода
+                    input_field = self.driver.find_element(By.CSS_SELECTOR, "input[type='text']")
+                    input_field.clear()
+                    input_field.send_keys(name)
+                    time.sleep(1)
+                    input_field.send_keys(Keys.ENTER)
                     time.sleep(2)
+                    self.logger.info("Значение введено напрямую в поле ввода")
 
                 except Exception as e2:
-                    self.logger.warning(f"Метод 2 не сработал: {e2}")
-                    self.logger.debug("Пробуем метод 3: Прямой ввод в поле без select2")
-
-                    # Метод 3: Прямой ввод в поле без использования select2
-                    try:
-                        # Ищем любое доступное поле ввода
-                        input_field = self.driver.find_element(By.CSS_SELECTOR, "input[type='text']")
-                        input_field.clear()
-                        input_field.send_keys(name)
-                        time.sleep(1)
-                        input_field.send_keys(Keys.ENTER)
-                        time.sleep(2)
-                        self.logger.info("Значение введено напрямую в поле ввода")
-                    except Exception as e3:
-                        self.logger.warning(f"Метод 3 не сработал: {e3}")
-                        return False
+                    self.logger.warning(f"Метод 3 не сработал: {e2}")
+                    return False
 
             # Нажимаем кнопку "Просмотр"
             self.logger.debug("Ищем кнопку 'Просмотр'...")
